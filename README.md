@@ -271,5 +271,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-> *Built as a Minor Project — Department of Computer Science & Engineering*  
+> *Built as a Minor Project — Department of Artificial Inteligence and Machine Learning*  
 > *Demonstrating the intersection of computational fluid dynamics, machine learning, and urban sustainability.*
