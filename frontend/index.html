@@ -359,10 +359,10 @@
             display: none;
         }
     </style>
-    <!-- Include Three.js via CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Include Three.js r137 (last release before Data3DTexture rename; DataTexture3D + WebGL2 both available) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
     <!-- Include OrbitControls -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <div id="canvas-container"></div>
@@ -498,9 +498,19 @@
                     <button id="btn-demo-mode" class="ctrl-btn" style="color: var(--accent-yellow); border-color: rgba(251,191,36,0.25); margin-bottom: 0;">Demo Mode</button>
                     <button id="btn-green-corridor" class="ctrl-btn" style="color: var(--accent-green); border-color: rgba(52,211,153,0.25); margin-bottom: 0;">Green Corridor</button>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                     <button id="btn-wind-shift" class="ctrl-btn" style="color: #60a5fa; border-color: rgba(96,165,250,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">Wind Shift</button>
                     <button id="btn-reset" class="ctrl-btn" style="color: var(--accent-red); border-color: rgba(248,113,113,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">Reset</button>
+                </div>
+                <!-- Volume Fog Toggle -->
+                <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; margin-top: 4px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
+                        <button id="btn-vol-toggle" class="ctrl-btn" style="color: #a78bfa; border-color: rgba(167,139,250,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">&#9729; Vol. Fog</button>
+                        <div style="display: flex; flex-direction: column; justify-content: center;">
+                            <div style="font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 2px;">Density</div>
+                            <input id="vol-density-slider" type="range" min="1" max="40" value="12" style="margin: 0;" />
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -565,7 +575,11 @@
         // Default isometric-ish view looking down at ~45 degrees
         camera.position.set(500, 600, 800);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        // WebGL2 required for DataTexture3D (3D textures in ray-march volume renderer)
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.capabilities && renderer.capabilities.isWebGL2
+            ? console.log('[GreenNavier] WebGL2 context acquired.')
+            : console.warn('[GreenNavier] WebGL2 not available – volume renderer disabled.');
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.shadowMap.enabled = true;
@@ -696,6 +710,184 @@
         let lastPhysicsWarning = false;
         const residualHistory = [];
         const maxHistoryLen = 200;
+
+        // ─────────────────────────────────────────────────────────────────────
+        // 3D VOLUMETRIC PM2.5 FOG RENDERER
+        // Uses WebGL2 DataTexture3D + GLSL ray-marching.
+        // All existing code paths are completely untouched.
+        // ─────────────────────────────────────────────────────────────────────
+        const VOL_W = 64, VOL_H = 64, VOL_D = 32; // 64×64 grid, 32 height layers
+        const volumeData = new Uint8Array(VOL_W * VOL_H * VOL_D);
+        let volumeTexture  = null;
+        let volumeMesh     = null;
+        let isVolumeActive = false;
+        const VOL_BOUNDS_MIN = new THREE.Vector3(-800,   0, -800);
+        const VOL_BOUNDS_MAX = new THREE.Vector3( 800, 150,  800);
+
+        // GLSL vertex shader — passes world-space position to fragment
+        const VOL_VERT = `
+            varying vec3 vWorldPos;
+            void main() {
+                vec4 wp = modelMatrix * vec4(position, 1.0);
+                vWorldPos   = wp.xyz;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        // GLSL fragment shader — ray-marching through 3D texture
+        const VOL_FRAG = `
+            #version 300 es
+            precision highp float;
+            precision highp sampler3D;
+
+            uniform sampler3D uVolume;
+            uniform vec3  uBoundsMin;
+            uniform vec3  uBoundsMax;
+            uniform vec3  uCamPos;
+            uniform float uDensityScale;
+            uniform float uMaxConc;
+
+            in  vec3 vWorldPos;
+            out vec4 fragColor;
+
+            // Transfer function: normalised density [0-1] -> RGBA
+            vec4 xfer(float t) {
+                if (t < 0.010) return vec4(0.0);
+                vec3  col;
+                float a;
+                if (t < 0.25) {
+                    float f = t / 0.25;
+                    col = mix(vec3(0.05, 1.00, 0.28), vec3(1.00, 0.85, 0.00), f);
+                    a   = f * 0.12;
+                } else if (t < 0.60) {
+                    float f = (t - 0.25) / 0.35;
+                    col = mix(vec3(1.00, 0.85, 0.00), vec3(1.00, 0.18, 0.04), f);
+                    a   = 0.12 + f * 0.28;
+                } else {
+                    float f = (t - 0.60) / 0.40;
+                    col = mix(vec3(1.00, 0.18, 0.04), vec3(1.00, 0.88, 0.88), f);
+                    a   = 0.40 + f * 0.50;
+                }
+                return vec4(col, a);
+            }
+
+            // Ray–AABB slab intersection
+            vec2 hitBox(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax) {
+                vec3 t0 = (bmin - ro) / rd;
+                vec3 t1 = (bmax - ro) / rd;
+                vec3 tn = min(t0, t1);
+                vec3 tf = max(t0, t1);
+                return vec2(max(max(tn.x, tn.y), tn.z),
+                            min(min(tf.x, tf.y), tf.z));
+            }
+
+            void main() {
+                vec3 rd  = normalize(vWorldPos - uCamPos);
+                vec2 hit = hitBox(uCamPos, rd, uBoundsMin, uBoundsMax);
+
+                if (hit.x > hit.y) { fragColor = vec4(0.0); return; }
+
+                float tNear    = max(hit.x, 0.001);
+                float tFar     = hit.y;
+                float marchLen = tFar - tNear;
+                if (marchLen <= 0.0) { fragColor = vec4(0.0); return; }
+
+                const int   STEPS    = 48;
+                float       stepSize = marchLen / float(STEPS);
+                vec3        boxSize  = uBoundsMax - uBoundsMin;
+                vec4        acc      = vec4(0.0);
+
+                for (int i = 0; i < STEPS; i++) {
+                    float t   = tNear + (float(i) + 0.5) * stepSize;
+                    vec3  pos = uCamPos + rd * t;
+                    vec3  uvw = clamp((pos - uBoundsMin) / boxSize, 0.0, 1.0);
+
+                    // texture stores 0-1 (normalised at upload time)
+                    float dens = texture(uVolume, uvw).r;
+
+                    vec4  src  = xfer(dens);
+                    // Beer–Lambert opacity for this step
+                    float a    = 1.0 - exp(-src.a * uDensityScale * stepSize * 0.006);
+
+                    // Front-to-back compositing
+                    acc.rgb += (1.0 - acc.a) * src.rgb * a;
+                    acc.a   += (1.0 - acc.a) * a;
+
+                    if (acc.a > 0.98) break;
+                }
+
+                fragColor = vec4(acc.rgb, acc.a);
+            }
+        `;
+
+        function createVolumeRenderer() {
+            if (!renderer.capabilities.isWebGL2) {
+                console.warn('[Volume] WebGL2 not available — skipping volume renderer.');
+                return;
+            }
+
+            // DataTexture3D (r128 name; renamed to Data3DTexture in r138)
+            volumeTexture = new THREE.DataTexture3D(volumeData, VOL_W, VOL_H, VOL_D);
+            volumeTexture.format      = THREE.RedFormat;
+            volumeTexture.type        = THREE.UnsignedByteType;
+            volumeTexture.minFilter   = THREE.LinearFilter;
+            volumeTexture.magFilter   = THREE.LinearFilter;
+            volumeTexture.wrapS       = THREE.ClampToEdgeWrapping;
+            volumeTexture.wrapT       = THREE.ClampToEdgeWrapping;
+            volumeTexture.wrapR       = THREE.ClampToEdgeWrapping;
+            volumeTexture.unpackAlignment = 1;
+            volumeTexture.needsUpdate = true;
+
+            const mat = new THREE.ShaderMaterial({
+                glslVersion:   THREE.GLSL3,
+                vertexShader:  VOL_VERT,
+                fragmentShader: VOL_FRAG,
+                uniforms: {
+                    uVolume:       { value: volumeTexture },
+                    uBoundsMin:    { value: VOL_BOUNDS_MIN },
+                    uBoundsMax:    { value: VOL_BOUNDS_MAX },
+                    uCamPos:       { value: new THREE.Vector3() },
+                    uDensityScale: { value: 1.2 },
+                    uMaxConc:      { value: 1.0 }
+                },
+                side:        THREE.BackSide,  // renders back faces → correct for ray-march
+                transparent: true,
+                depthWrite:  false,
+                depthTest:   true,
+                blending:    THREE.NormalBlending
+            });
+
+            // Box spans the full city: 1600×150×1600 m, centred at y=75
+            const geom   = new THREE.BoxGeometry(1600, 150, 1600);
+            volumeMesh   = new THREE.Mesh(geom, mat);
+            volumeMesh.position.set(0, 75, 0);
+            volumeMesh.visible = false;    // hidden until user toggles on
+            volumeMesh.renderOrder = 999;  // render last (after all opaque geometry)
+            scene.add(volumeMesh);
+            console.log('[Volume] Ray-march volume renderer created (64×64×32 3D texture).');
+        }
+
+        function updateVolumeTexture(conc, maxConc) {
+            if (!volumeTexture || !isVolumeActive) return;
+
+            const safeMax = Math.max(0.001, maxConc);
+            volumeMesh.material.uniforms.uMaxConc.value = safeMax;
+
+            const decay = 0.18; // exponential decay per height layer (~150m / 32 layers ≈ 4.7m each)
+            for (let layer = 0; layer < VOL_D; layer++) {
+                const heightDecay = Math.exp(-layer * decay);
+                for (let row = 0; row < VOL_H; row++) {
+                    const rowData = conc[row];
+                    for (let col = 0; col < VOL_W; col++) {
+                        const raw  = (rowData && rowData[col]) ? rowData[col] : 0;
+                        // Normalise to [0,1] so the shader transfer function gets clean input
+                        const norm = Math.min(1.0, (raw / safeMax) * heightDecay);
+                        volumeData[layer * VOL_W * VOL_H + row * VOL_W + col] = (norm * 255) | 0;
+                    }
+                }
+            }
+            volumeTexture.needsUpdate = true;
+        }
 
         function flashRedOverlay() {
             const overlay = document.getElementById('flash-overlay');
@@ -1094,6 +1286,9 @@
                 const frame = JSON.parse(event.data);
                 latestConc = frame.conc;
                 latestMaxConc = frame.max_conc;
+
+                // Feed live data to the volume renderer (no-op when volume is hidden)
+                updateVolumeTexture(frame.conc, frame.max_conc);
 
                 // Update UI Stats immediately for step and residual
                 document.getElementById('stat-residual').innerText = frame.physics_residual.toExponential(4);
@@ -1994,6 +2189,11 @@
                 camera.position.lerp(widePos, 0.05);
             }
 
+            // 7. Update volume renderer camera position uniform each frame
+            if (volumeMesh && isVolumeActive) {
+                volumeMesh.material.uniforms.uCamPos.value.copy(camera.position);
+            }
+
             controls.update();
             renderer.render(scene, camera);
         }
@@ -2139,6 +2339,32 @@
             }
         };
 
+        // Volume Fog toggle
+        document.getElementById('btn-vol-toggle').onclick = () => {
+            if (!volumeMesh) {
+                showNotification('Volume renderer unavailable (WebGL2 required).');
+                setTimeout(hideNotification, 3000);
+                return;
+            }
+            isVolumeActive = !isVolumeActive;
+            volumeMesh.visible = isVolumeActive;
+            const btn = document.getElementById('btn-vol-toggle');
+            if (isVolumeActive) {
+                btn.classList.add('ctrl-btn-active');
+                // Force an immediate texture fill so the volume appears instantly
+                updateVolumeTexture(latestConc, latestMaxConc);
+            } else {
+                btn.classList.remove('ctrl-btn-active');
+            }
+        };
+
+        // Volume density slider
+        document.getElementById('vol-density-slider').oninput = (e) => {
+            if (!volumeMesh) return;
+            const d = parseFloat(e.target.value) / 10.0; // 0.1 – 4.0
+            volumeMesh.material.uniforms.uDensityScale.value = d;
+        };
+
         document.getElementById('btn-green-corridor').onclick = () => {
             isGreenCorridorActive = !isGreenCorridorActive;
             const btn = document.getElementById('btn-green-corridor');
@@ -2185,6 +2411,8 @@
 
         // --- Initializer ---
         async function init() {
+            // Create the volume renderer before the first frame
+            createVolumeRenderer();
             animate();
             await loadMapData();
             // Trigger default Noon preset on startup after map data/sliders are loaded
