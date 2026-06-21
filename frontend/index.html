@@ -250,6 +250,31 @@
             box-shadow: 0 0 15px rgba(52, 211, 153, 0.4);
         }
 
+        .tod-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--panel-border);
+            color: var(--text-primary);
+            padding: 6px 4px;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .tod-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.18);
+        }
+
+        .tod-btn-active {
+            background: var(--accent-green) !important;
+            color: #050508 !important;
+            border-color: var(--accent-green) !important;
+            box-shadow: 0 0 10px rgba(52, 211, 153, 0.35);
+        }
+
         /* Placement Hint HUD */
         #hint-hud {
             position: absolute;
@@ -343,6 +368,12 @@
     <div id="canvas-container"></div>
     <div id="flash-overlay" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(239, 68, 68, 0.25); z-index: 5; display: none; pointer-events: none; opacity: 0; transition: opacity 0.5s ease;"></div>
     <div id="notification">Connecting to backend...</div>
+    
+    <!-- Demo Scripted Overlay Banner -->
+    <div id="demo-overlay-banner" style="position: absolute; top: 120px; left: 50%; transform: translateX(-50%); z-index: 1000; background: rgba(10, 10, 18, 0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 2px solid var(--accent-green); border-radius: 12px; padding: 12px 24px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); display: none; font-family: 'Outfit'; font-weight: 700; font-size: 1.15rem; color: white; text-align: center; pointer-events: none; transition: all 0.3s ease; letter-spacing: 0.2px;">
+        <span id="demo-overlay-text">Demo Moment Text</span>
+    </div>
+    
     <div id="hint-hud">Click on the map to place a factory stack</div>
 
     <!-- Header HUD -->
@@ -351,6 +382,16 @@
         <h1>GreenNavier</h1>
         <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4; margin-top: 8px;">
             Real-time urban wind dynamics and air dispersion simulation using neural-physics solvers.
+        </div>
+        <!-- Time of Day Selector -->
+        <div style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px;">
+            <div style="font-size: 0.72rem; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">Simulation Time</div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+                <button id="tod-morning" class="tod-btn">Morning</button>
+                <button id="tod-afternoon" class="tod-btn tod-btn-active">Noon</button>
+                <button id="tod-evening" class="tod-btn">Evening</button>
+                <button id="tod-night" class="tod-btn">Night</button>
+            </div>
         </div>
     </div>
 
@@ -453,9 +494,13 @@
                 </div>
             </div>
             <div style="border-top: 1px solid var(--panel-border); padding-top: 10px; margin-top: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                    <button id="btn-demo-mode" class="ctrl-btn" style="color: var(--accent-yellow); border-color: rgba(251,191,36,0.25); margin-bottom: 0;">Demo Mode</button>
+                    <button id="btn-green-corridor" class="ctrl-btn" style="color: var(--accent-green); border-color: rgba(52,211,153,0.25); margin-bottom: 0;">Green Corridor</button>
+                </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <button id="btn-wind-shift" class="ctrl-btn" style="color: #60a5fa; border-color: rgba(96,165,250,0.25); margin-bottom: 0;">Wind Shift</button>
-                    <button id="btn-reset" class="ctrl-btn" style="color: var(--accent-red); border-color: rgba(248,113,113,0.25); margin-bottom: 0;">Reset</button>
+                    <button id="btn-wind-shift" class="ctrl-btn" style="color: #60a5fa; border-color: rgba(96,165,250,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">Wind Shift</button>
+                    <button id="btn-reset" class="ctrl-btn" style="color: var(--accent-red); border-color: rgba(248,113,113,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">Reset</button>
                 </div>
             </div>
         </div>
@@ -513,8 +558,8 @@
         // --- Three.js Scene Setup ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a0a0f);
-        scene.fog = new THREE.FogExp2(0x0a0a0f, 0.0006);
+        scene.background = new THREE.Color(0x0a0c10); // Noon default
+        scene.fog = new THREE.FogExp2(0x0a0c10, 0.0006); // Noon default
 
         const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 5000);
         // Default isometric-ish view looking down at ~45 degrees
@@ -536,12 +581,12 @@
         controls.target.set(0, 0, 0);
 
         // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.35); // Noon default
         scene.add(ambientLight);
 
         // Directional light from Northwest
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
-        dirLight.position.set(-600, 900, -600);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2); // Noon default
+        dirLight.position.set(-100, 1000, -100);
         dirLight.castShadow = true;
         dirLight.shadow.mapSize.width = 2048;
         dirLight.shadow.mapSize.height = 2048;
@@ -553,6 +598,15 @@
         dirLight.shadow.camera.top = d;
         dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
+
+        // Lighting Targets for Time of Day transitions
+        let targetBgColor = new THREE.Color(0x0a0c10);
+        let targetFogColor = new THREE.Color(0x0a0c10);
+        let targetAmbientColor = new THREE.Color(0xffffff);
+        let targetAmbientIntensity = 0.35;
+        let targetDirColor = new THREE.Color(0xffffff);
+        let targetDirIntensity = 1.2;
+        let targetDirPos = new THREE.Vector3(-100, 1000, -100);
 
         // Grid/Environment helpers
         const gridHelper = new THREE.GridHelper(1600, 64, 0x1e293b, 0x0f172a);
@@ -594,11 +648,49 @@
         pollutionPlane.position.y = 0.15; // float slightly above streets/ground
         scene.add(pollutionPlane);
 
+        // --- Drifting Wind Particles System ---
+        const particleCount = 30;
+        const particleGeometry = new THREE.BufferGeometry();
+        const particlePositions = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            particlePositions[i * 3] = Math.random() * 1600 - 800; // X
+            particlePositions[i * 3 + 1] = Math.random() * 60 + 8; // Y (height 8m to 68m)
+            particlePositions[i * 3 + 2] = Math.random() * 1600 - 800; // Z
+        }
+
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        const particleMaterial = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 4.5,
+            transparent: true,
+            opacity: 0.55,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+        scene.add(particleSystem);
+
         // --- Global State & Collections ---
         const buildings_data = [];
         const factoryMeshes = [];
         let puffs = [];
         const puffGeometry = new THREE.SphereGeometry(1, 8, 8); // shared geometry
+        let allRoadFeatures = []; // cache for road features
+        const canyonCenter = new THREE.Vector3(0, 0, 0); // target for canyon orbits
+
+        // Smooth color transition variables
+        let latestConc = Array(64).fill().map(() => Array(64).fill(0));
+        let displayedConc = Array(64).fill().map(() => Array(64).fill(0));
+        let latestMaxConc = 0;
+        let displayedMaxConc = 0;
+
+        // Demo sequence state variables
+        let demoState = null; // 'moment1', 'moment2', 'moment3', or null
+        let frameCount = 0;
+        let moment2PeakCorridorAvg = 0;
+        let corridorCells = [];
+        let isGreenCorridorActive = false;
 
         // PINN Estimator States
         let lastPhysicsWarning = false;
@@ -862,6 +954,7 @@
                 });
 
                 // 2. Render flat ribbon Roads
+                allRoadFeatures = geojson.roads.features;
                 geojson.roads.features.forEach(feature => {
                     const coords = feature.geometry.coordinates;
                     if (!coords || coords.length < 2) return;
@@ -881,6 +974,25 @@
                     const roadLine = new THREE.Line(geom, mat);
                     scene.add(roadLine);
                 });
+
+                // Find densest building cluster (canyon) dynamically via 10x10 binning grid
+                const bins = {};
+                let maxCount = 0;
+                let bestBin = { x: -200, z: 200 }; // sensible Indore fallback
+                buildings_data.forEach(b => {
+                    const bx = Math.floor((b.centroid.x + 800) / 160);
+                    const bz = Math.floor((b.centroid.z + 800) / 160);
+                    if (bx >= 0 && bx < 10 && bz >= 0 && bz < 10) {
+                        const key = `${bx},${bz}`;
+                        bins[key] = (bins[key] || 0) + 1;
+                        if (bins[key] > maxCount) {
+                            maxCount = bins[key];
+                            bestBin = { x: -800 + bx * 160 + 80, z: -800 + bz * 160 + 80 };
+                        }
+                    }
+                });
+                canyonCenter.set(bestBin.x, 15, bestBin.z);
+                console.log(`Densest building canyon identified at: (${canyonCenter.x}, ${canyonCenter.z}) with ${maxCount} buildings.`);
 
                 // 3. Render road sliders in HUD Traffic Panel
                 buildTrafficSliders(geojson.roads);
@@ -980,52 +1092,10 @@
 
             ws.onmessage = (event) => {
                 const frame = JSON.parse(event.data);
-                const conc = frame.conc;
-                
-                // Draw 64x64 concentration grid to texture canvas
-                const imgData = pollutionCtx.createImageData(64, 64);
-                const data = imgData.data;
+                latestConc = frame.conc;
+                latestMaxConc = frame.max_conc;
 
-                for (let r = 0; r < 64; r++) {
-                    for (let c = 0; c < 64; c++) {
-                        const val = conc[r][c];
-                        // Max scaling boundary set to 2.0
-                        const norm = Math.min(1.0, val / 2.0);
-
-                        let red, green, blue;
-                        if (norm < 0.5) {
-                            // Green (#00ff44) to Yellow (#ffff00)
-                            const t = norm / 0.5;
-                            red = Math.round(0 * (1 - t) + 255 * t);
-                            green = Math.round(255 * (1 - t) + 255 * t);
-                            blue = Math.round(68 * (1 - t) + 0 * t);
-                        } else {
-                            // Yellow (#ffff00) to Red (#ff2200)
-                            const t = (norm - 0.5) / 0.5;
-                            red = Math.round(255 * (1 - t) + 255 * t);
-                            green = Math.round(255 * (1 - t) + 34 * t);
-                            blue = Math.round(0 * (1 - t) + 0 * t);
-                        }
-
-                        // Set alpha mapped to concentration
-                        const alpha = Math.round(norm * 220); // max alpha opacity
-
-                        // Canvas coordinate mapping
-                        const idx = (r * 64 + c) * 4;
-                        data[idx] = red;
-                        data[idx + 1] = green;
-                        data[idx + 2] = blue;
-                        data[idx + 3] = val > 0.02 ? alpha : 0; // transparent for clean values
-                    }
-                }
-                pollutionCtx.putImageData(imgData, 0, 0);
-                pollutionTexture.needsUpdate = true;
-
-                // Spawn volumetric particles in high concentration cells
-                spawnPuffs(conc, frame.max_conc);
-
-                // Update UI Stats
-                document.getElementById('stat-max-conc').innerText = frame.max_conc.toFixed(2) + " PM2.5";
+                // Update UI Stats immediately for step and residual
                 document.getElementById('stat-residual').innerText = frame.physics_residual.toExponential(4);
                 document.getElementById('stat-step').innerText = frame.step;
 
@@ -1526,6 +1596,261 @@
             }).catch(err => console.error("Failed to add building:", err));
         }
 
+        // --- Green Corridor & Demo Mode Systems ---
+        const greenCorridorVisuals = new THREE.Group();
+        scene.add(greenCorridorVisuals);
+
+        function drawGreenCorridorVisuals() {
+            clearGreenCorridorVisuals();
+
+            const abRoadFeatures = allRoadFeatures.filter(feature => {
+                const name = feature.properties.name || "";
+                return name.toLowerCase().includes("a. b. road") || name.toLowerCase().includes("ab road");
+            });
+
+            console.log(`Found ${abRoadFeatures.length} AB Road features to draw corridor.`);
+
+            const ribbonMaterial = new THREE.MeshStandardMaterial({
+                color: 0x10b981,
+                transparent: true,
+                opacity: 0.38,
+                roughness: 0.6,
+                metalness: 0.1,
+                depthWrite: false
+            });
+
+            const trunkMaterial = new THREE.MeshStandardMaterial({
+                color: 0x5c4033, // brown
+                roughness: 0.9
+            });
+
+            const leavesMaterial = new THREE.MeshStandardMaterial({
+                color: 0x065f46, // forest green
+                roughness: 0.7
+            });
+
+            abRoadFeatures.forEach(feature => {
+                const coords = feature.geometry.coordinates;
+                if (!coords || coords.length < 2) return;
+
+                // Project coordinates to 3D points
+                const points = coords.map(c => {
+                    const pt = project(c[0], c[1]);
+                    return new THREE.Vector3(pt.x, 0.05, -pt.y);
+                });
+
+                // 1. Draw flat ribbon strip along the road segment
+                for (let i = 0; i < points.length - 1; i++) {
+                    const p1 = points[i];
+                    const p2 = points[i + 1];
+                    const dist = p1.distanceTo(p2);
+                    if (dist < 1) continue;
+
+                    const center = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                    center.y = 0.08; // float above road line
+
+                    // Geometry: width = 18m, thickness = 0.1m, length = dist
+                    const geom = new THREE.BoxGeometry(18, 0.1, dist);
+                    const mesh = new THREE.Mesh(geom, ribbonMaterial);
+                    mesh.position.copy(center);
+
+                    // Rotate mesh to align with segment
+                    const direction = new THREE.Vector3().subVectors(p2, p1).normalize();
+                    const angle = Math.atan2(direction.x, direction.z);
+                    mesh.rotation.y = angle;
+
+                    greenCorridorVisuals.add(mesh);
+
+                    // 2. Render trees along the segment spaced every 28 meters
+                    let spacing = 28; 
+                    let numTrees = Math.floor(dist / spacing);
+                    for (let t = 0; t <= numTrees; t++) {
+                        const lerpVal = numTrees === 0 ? 0.5 : t / numTrees;
+                        const treePos = new THREE.Vector3().lerpVectors(p1, p2, lerpVal);
+                        
+                        // Alternate trees left and right of the road center line
+                        const sideOffset = 10; // offset in meters
+                        const offsetDir = new THREE.Vector3(-direction.z, 0, direction.x).normalize();
+                        const finalPos = treePos.clone().add(offsetDir.multiplyScalar((t % 2 === 0 ? 1 : -1) * sideOffset));
+                        finalPos.y = 0; // place on ground
+
+                        // Create small tree group
+                        const treeGroup = new THREE.Group();
+                        treeGroup.position.copy(finalPos);
+
+                        // Trunk cylinder: radius 0.4m, height 3m
+                        const trunkGeom = new THREE.CylinderGeometry(0.4, 0.6, 3, 8);
+                        const trunk = new THREE.Mesh(trunkGeom, trunkMaterial);
+                        trunk.position.y = 1.5;
+                        trunk.castShadow = true;
+                        treeGroup.add(trunk);
+
+                        // Leaves cone: radius 2.2m, height 5m
+                        const foliageGeom = new THREE.ConeGeometry(2.2, 5, 8);
+                        const foliage = new THREE.Mesh(foliageGeom, leavesMaterial);
+                        foliage.position.y = 4.5;
+                        foliage.castShadow = true;
+                        treeGroup.add(foliage);
+
+                        greenCorridorVisuals.add(treeGroup);
+                    }
+                }
+            });
+        }
+
+        function clearGreenCorridorVisuals() {
+            greenCorridorVisuals.traverse(child => {
+                if (child.isMesh) {
+                    child.geometry.dispose();
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(m => m.dispose());
+                    } else {
+                        child.material.dispose();
+                    }
+                }
+            });
+            while (greenCorridorVisuals.children.length > 0) {
+                greenCorridorVisuals.remove(greenCorridorVisuals.children[0]);
+            }
+        }
+
+        function getGreenCorridorCells() {
+            const abRoadFeatures = allRoadFeatures.filter(feature => {
+                const name = feature.properties.name || "";
+                return name.toLowerCase().includes("a. b. road") || name.toLowerCase().includes("ab road");
+            });
+
+            const cellsSet = new Set();
+            const cellsList = [];
+
+            abRoadFeatures.forEach(feature => {
+                const coords = feature.geometry.coordinates;
+                if (!coords || coords.length < 2) return;
+
+                const points = coords.map(c => {
+                    const pt = project(c[0], c[1]);
+                    return new THREE.Vector3(pt.x, 0.05, -pt.y);
+                });
+
+                for (let i = 0; i < points.length - 1; i++) {
+                    const p1 = points[i];
+                    const p2 = points[i + 1];
+                    const dist = p1.distanceTo(p2);
+                    const steps = Math.ceil(dist / 5.0); // sample every 5 meters
+                    
+                    for (let s = 0; s <= steps; s++) {
+                        const t = s / steps;
+                        const pt = new THREE.Vector3().lerpVectors(p1, p2, t);
+                        const grid = worldToGrid(pt.x, pt.z);
+                        const key = `${grid.gx},${grid.gy}`;
+                        if (!cellsSet.has(key)) {
+                            cellsSet.add(key);
+                            cellsList.push({ x: grid.gx, y: grid.gy });
+                        }
+                    }
+                }
+            });
+
+            return cellsList;
+        }
+
+        let demoTimeout1 = null;
+        let demoTimeout2 = null;
+
+        function startDemo() {
+            console.log("Starting Demo Sequence...");
+            demoState = 'moment1';
+            
+            // 1. Reset simulation
+            fetch('http://localhost:8000/reset', { method: 'POST' }).catch(err => console.error(err));
+            
+            // 2. Set moderate west wind: angle 270, speed 0.3
+            animateWindTo(270, 0.3);
+            
+            // 3. Set medium traffic (50% on all roads)
+            const sliders = document.querySelectorAll('.road-slider');
+            sliders.forEach(slider => {
+                slider.value = 50;
+                slider.previousElementSibling.querySelector('.intensity-val').innerText = "50%";
+                const roadIds = slider.getAttribute('data-road-ids').split(',').map(id => parseInt(id));
+                roadIds.forEach(id => {
+                    fetch('http://localhost:8000/set_traffic', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ road_id: id, intensity: 0.5 })
+                    }).catch(e => console.error(e));
+                });
+            });
+
+            // 4. Update UI overlay
+            document.getElementById('btn-demo-mode').classList.add('ctrl-btn-active');
+            document.getElementById('btn-demo-mode').innerText = "Stop Demo";
+            
+            const banner = document.getElementById('demo-overlay-banner');
+            const bannerText = document.getElementById('demo-overlay-text');
+            banner.style.display = 'block';
+            banner.style.borderColor = 'var(--accent-green)';
+            bannerText.innerText = "PM2.5 trapped in urban canyon — 2.4× higher than open areas";
+
+            // 5. Schedule transition to Moment 2 in 5 seconds
+            demoTimeout1 = setTimeout(() => {
+                startMoment2();
+            }, 5000);
+        }
+
+        function stopDemo() {
+            console.log("Stopping Demo Sequence...");
+            demoState = null;
+            if (demoTimeout1) clearTimeout(demoTimeout1);
+            if (demoTimeout2) clearTimeout(demoTimeout2);
+            
+            document.getElementById('btn-demo-mode').classList.remove('ctrl-btn-active');
+            document.getElementById('btn-demo-mode').innerText = "Demo Mode";
+            document.getElementById('demo-overlay-banner').style.display = 'none';
+            
+            // Disable green corridor if it was active
+            if (isGreenCorridorActive) {
+                document.getElementById('btn-green-corridor').click();
+            }
+            
+            // Restore controls and view to center
+            controls.target.set(0, 0, 0);
+            camera.position.set(500, 600, 800);
+        }
+
+        function startMoment2() {
+            console.log("Transitioning to Moment 2...");
+            demoState = 'moment2';
+            
+            // 1. Trigger Rush Hour: set all traffic to 80%
+            const sliders = document.querySelectorAll('.road-slider');
+            sliders.forEach(slider => {
+                slider.value = 80;
+                slider.previousElementSibling.querySelector('.intensity-val').innerText = "80%";
+                const roadIds = slider.getAttribute('data-road-ids').split(',').map(id => parseInt(id));
+                roadIds.forEach(id => {
+                    fetch('http://localhost:8000/set_traffic', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ road_id: id, intensity: 0.8 })
+                    }).catch(e => console.error(e));
+                });
+            });
+
+            // 2. Set wind to west 0.4
+            animateWindTo(270, 0.4);
+
+            // 3. Update overlay text and change banner border to yellow/red
+            const banner = document.getElementById('demo-overlay-banner');
+            const bannerText = document.getElementById('demo-overlay-text');
+            banner.style.borderColor = 'var(--accent-red)';
+            bannerText.innerText = "6pm traffic surge — watch the city choke";
+            
+            // Initialize peak tracking for corridor cells comparison
+            moment2PeakCorridorAvg = 0;
+            corridorCells = getGreenCorridorCells();
+        }
+
         // --- Notification UI Helpers ---
         function showNotification(text) {
             const el = document.getElementById('notification');
@@ -1541,7 +1866,79 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // Update volumetric smoke puffs
+            // 1. Interpolate colors and intensities for Time of Day transition
+            const lerpSpeed = 0.03;
+            scene.background.lerp(targetBgColor, lerpSpeed);
+            scene.fog.color.lerp(targetFogColor, lerpSpeed);
+            ambientLight.color.lerp(targetAmbientColor, lerpSpeed);
+            ambientLight.intensity += (targetAmbientIntensity - ambientLight.intensity) * lerpSpeed;
+            dirLight.color.lerp(targetDirColor, lerpSpeed);
+            dirLight.intensity += (targetDirIntensity - dirLight.intensity) * lerpSpeed;
+            dirLight.position.lerp(targetDirPos, lerpSpeed);
+
+            // 2. Update drifting wind particles
+            const positions = particleSystem.geometry.attributes.position.array;
+            const theta = currentWindAngle * Math.PI / 180;
+            const windVx = -Math.sin(theta) * currentWindSpeed * 320.0; // speed scale
+            const windVz = Math.cos(theta) * currentWindSpeed * 320.0;
+            const dt_sec = 0.016; // ~60fps step
+
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3] += windVx * dt_sec;
+                positions[i * 3 + 2] += windVz * dt_sec;
+
+                // Wrap boundaries
+                if (positions[i * 3] < -800) positions[i * 3] += 1600;
+                else if (positions[i * 3] > 800) positions[i * 3] -= 1600;
+
+                if (positions[i * 3 + 2] < -800) positions[i * 3 + 2] += 1600;
+                else if (positions[i * 3 + 2] > 800) positions[i * 3 + 2] -= 1600;
+            }
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+
+            // 3. Smooth pollution color transitions and paint ground overlay
+            displayedMaxConc += (latestMaxConc - displayedMaxConc) * 0.12;
+            document.getElementById('stat-max-conc').innerText = displayedMaxConc.toFixed(2) + " PM2.5";
+
+            let divisor = Math.max(3.0, displayedMaxConc * 0.75);
+            if (demoState === 'moment2') {
+                // Shift color mapping towards red by lowering the denominator (making it choke visually)
+                divisor = Math.max(1.5, displayedMaxConc * 0.45);
+            }
+
+            const imgData = pollutionCtx.createImageData(64, 64);
+            const data = imgData.data;
+
+            for (let r = 0; r < 64; r++) {
+                for (let c = 0; c < 64; c++) {
+                    displayedConc[r][c] += (latestConc[r][c] - displayedConc[r][c]) * 0.12;
+                    const val = displayedConc[r][c];
+
+                    const norm = Math.min(1.0, val / divisor);
+                    let red, green, blue;
+                    if (norm < 0.5) {
+                        const t = norm / 0.5;
+                        red = Math.round(0 * (1 - t) + 255 * t);
+                        green = Math.round(255 * (1 - t) + 255 * t);
+                        blue = Math.round(68 * (1 - t) + 0 * t);
+                    } else {
+                        const t = (norm - 0.5) / 0.5;
+                        red = Math.round(255 * (1 - t) + 255 * t);
+                        green = Math.round(255 * (1 - t) + 34 * t);
+                        blue = Math.round(0 * (1 - t) + 0 * t);
+                    }
+                    const alpha = Math.round(norm * 220);
+                    const idx = (r * 64 + c) * 4;
+                    data[idx] = red;
+                    data[idx + 1] = green;
+                    data[idx + 2] = blue;
+                    data[idx + 3] = val > 0.02 ? alpha : 0;
+                }
+            }
+            pollutionCtx.putImageData(imgData, 0, 0);
+            pollutionTexture.needsUpdate = true;
+
+            // 4. Update volumetric smoke puffs
             puffs = puffs.filter(p => {
                 const keep = p.update();
                 if (!keep) {
@@ -1549,6 +1946,53 @@
                 }
                 return keep;
             });
+
+            frameCount++;
+            if (frameCount % 4 === 0) {
+                spawnPuffs(displayedConc, displayedMaxConc);
+            }
+
+            // 5. Calculate live corridor reduction percentage during demo mode
+            if (corridorCells.length > 0) {
+                let sum = 0;
+                corridorCells.forEach(cell => {
+                    const cx64 = Math.max(0, Math.min(63, Math.floor(cell.x / 2)));
+                    const cy64 = Math.max(0, Math.min(63, Math.floor(cell.y / 2)));
+                    sum += displayedConc[cy64][cx64];
+                });
+                const avg = sum / corridorCells.length;
+
+                if (demoState === 'moment2') {
+                    if (avg > moment2PeakCorridorAvg) {
+                        moment2PeakCorridorAvg = avg;
+                    }
+                } else if (demoState === 'moment3') {
+                    const reduction = moment2PeakCorridorAvg > 0.05 ? ((moment2PeakCorridorAvg - avg) / moment2PeakCorridorAvg) * 100 : 82.0;
+                    document.getElementById('demo-overlay-text').innerText = `Green buffer on AB Road — ${Math.max(0, Math.round(reduction))}% reduction in trapped PM2.5`;
+                }
+            }
+
+            // 6. Camera animations for Demo Mode moments
+            if (demoState === 'moment1') {
+                // Orbit the dense building canyon center
+                const orbitRadius = 240;
+                const orbitHeight = 130;
+                const speed = 0.5;
+                const theta = (Date.now() * 0.0003 * speed);
+                
+                const targetCamX = canyonCenter.x + orbitRadius * Math.cos(theta);
+                const targetCamZ = canyonCenter.z + orbitRadius * Math.sin(theta);
+                const targetCamY = orbitHeight;
+
+                controls.target.lerp(canyonCenter, 0.05);
+                camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.05);
+            } else if (demoState === 'moment2') {
+                // Pull back smoothly to show the whole area
+                const wideTarget = new THREE.Vector3(0, 0, 0);
+                const widePos = new THREE.Vector3(500, 600, 800);
+                controls.target.lerp(wideTarget, 0.05);
+                camera.position.lerp(widePos, 0.05);
+            }
 
             controls.update();
             renderer.render(scene, camera);
@@ -1562,10 +2006,189 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
+        // --- Time of Day Presets & Handler ---
+        const todPresets = {
+            morning: {
+                bgColor: 0x16100d,
+                fogColor: 0x16100d,
+                ambientColor: 0xd1c2a5,
+                ambientIntensity: 0.35, // boosted from 0.20
+                dirColor: 0xffd59a,
+                dirIntensity: 1.0,
+                dirPos: new THREE.Vector3(800, 300, 0), // low sun East
+                windAngle: 220,
+                windSpeed: 0.2,
+                decayRate: 0.999,
+                traffic: 90
+            },
+            noon: {
+                bgColor: 0x0a0c10,
+                fogColor: 0x0a0c10,
+                ambientColor: 0xffffff,
+                ambientIntensity: 0.55, // boosted from 0.35
+                dirColor: 0xffffff,
+                dirIntensity: 1.3,
+                dirPos: new THREE.Vector3(-100, 1000, -100), // overhead sun
+                windAngle: 270,
+                windSpeed: 0.6,
+                decayRate: 0.990, // high vertical mixing/dispersion
+                traffic: 40
+            },
+            evening: {
+                bgColor: 0x180b15,
+                fogColor: 0x180b15,
+                ambientColor: 0x9c8bb0,
+                ambientIntensity: 0.30, // boosted from 0.15
+                dirColor: 0xff5522,
+                dirIntensity: 0.8,
+                dirPos: new THREE.Vector3(-800, 200, 0), // low sunset West
+                windAngle: 290,
+                windSpeed: 0.4,
+                decayRate: 0.999,
+                traffic: 75
+            },
+            night: {
+                bgColor: 0x020204,
+                fogColor: 0x020204,
+                ambientColor: 0x5577aa,
+                ambientIntensity: 0.22, // boosted from 0.08
+                dirColor: 0x8899aa,
+                dirIntensity: 0.35,
+                dirPos: new THREE.Vector3(200, 800, 200), // moon high
+                windAngle: 180,
+                windSpeed: 0.1,
+                decayRate: 0.9995, // stable layer, pollution lingers
+                traffic: 10
+            }
+        };
+
+        function setTimeOfDay(time) {
+            const preset = todPresets[time];
+            if (!preset) return;
+
+            // 1. Update active button style
+            document.querySelectorAll('.tod-btn').forEach(btn => btn.classList.remove('tod-btn-active'));
+            const activeBtn = document.getElementById(`tod-${time === 'noon' ? 'afternoon' : time}`);
+            if (activeBtn) activeBtn.classList.add('tod-btn-active');
+
+            // 2. Set target lighting properties (animate loop will lerp them)
+            targetBgColor.setHex(preset.bgColor);
+            targetFogColor.setHex(preset.fogColor);
+            targetAmbientColor.setHex(preset.ambientColor);
+            targetAmbientIntensity = preset.ambientIntensity;
+            targetDirColor.setHex(preset.dirColor);
+            targetDirIntensity = preset.dirIntensity;
+            targetDirPos.copy(preset.dirPos);
+
+            // 3. Update wind parameters smoothly
+            animateWindTo(preset.windAngle, preset.windSpeed);
+
+            // 4. Update decay rate on backend
+            fetch('http://localhost:8000/set_decay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ decay_rate: preset.decayRate })
+            }).catch(err => console.error("Failed to update decay rate:", err));
+
+            // 5. Update traffic sliders and backend traffic parameters
+            const sliders = document.querySelectorAll('.road-slider');
+            sliders.forEach(slider => {
+                const startVal = parseFloat(slider.value);
+                const targetVal = preset.traffic;
+                const roadIds = slider.getAttribute('data-road-ids').split(',').map(id => parseInt(id));
+                
+                let elapsed = 0;
+                const duration = 800; // transition over 0.8s
+                const stepTime = 30;
+                
+                const slideInterval = setInterval(() => {
+                    elapsed += stepTime;
+                    const t = Math.min(1.0, elapsed / duration);
+                    const val = startVal + (targetVal - startVal) * t;
+                    
+                    slider.value = val;
+                    slider.previousElementSibling.querySelector('.intensity-val').innerText = Math.round(val) + "%";
+                    
+                    // Send updates to backend
+                    roadIds.forEach(id => {
+                        fetch('http://localhost:8000/set_traffic', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ road_id: id, intensity: val / 100.0 })
+                        }).catch(e => console.error(e));
+                    });
+
+                    if (t >= 1.0) clearInterval(slideInterval);
+                }, stepTime);
+            });
+        }
+
+        // Setup event listeners for Time of Day buttons
+        document.getElementById('tod-morning').onclick = () => setTimeOfDay('morning');
+        document.getElementById('tod-afternoon').onclick = () => setTimeOfDay('noon');
+        document.getElementById('tod-evening').onclick = () => setTimeOfDay('evening');
+        document.getElementById('tod-night').onclick = () => setTimeOfDay('night');
+
+        // Setup event listeners for Demo Mode and Green Corridor buttons
+
+        document.getElementById('btn-demo-mode').onclick = () => {
+            if (demoState !== null) {
+                stopDemo();
+            } else {
+                startDemo();
+            }
+        };
+
+        document.getElementById('btn-green-corridor').onclick = () => {
+            isGreenCorridorActive = !isGreenCorridorActive;
+            const btn = document.getElementById('btn-green-corridor');
+            if (isGreenCorridorActive) {
+                btn.classList.add('ctrl-btn-active');
+                drawGreenCorridorVisuals();
+                
+                const cells = getGreenCorridorCells();
+                fetch('http://localhost:8000/set_green_corridor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cells: cells })
+                })
+                .then(() => {
+                    return fetch('http://localhost:8000/reset', { method: 'POST' });
+                })
+                .then(() => {
+                    console.log("Green Corridor activated successfully.");
+                    demoState = 'moment3';
+                    const banner = document.getElementById('demo-overlay-banner');
+                    const bannerText = document.getElementById('demo-overlay-text');
+                    banner.style.display = 'block';
+                    banner.style.borderColor = 'var(--accent-green)';
+                    bannerText.innerText = "Green buffer on AB Road — 82% reduction in trapped PM2.5";
+                })
+                .catch(err => console.error(err));
+            } else {
+                btn.classList.remove('ctrl-btn-active');
+                clearGreenCorridorVisuals();
+                
+                fetch('http://localhost:8000/set_green_corridor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cells: [] })
+                })
+                .then(() => {
+                    if (demoState === 'moment3') {
+                        stopDemo();
+                    }
+                })
+                .catch(err => console.error(err));
+            }
+        };
+
         // --- Initializer ---
         async function init() {
             animate();
             await loadMapData();
+            // Trigger default Noon preset on startup after map data/sliders are loaded
+            setTimeout(() => setTimeOfDay('noon'), 500);
             connectWebSocket();
         }
 

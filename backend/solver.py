@@ -49,10 +49,22 @@ def enforce_velocity_boundary(u, v, obstacle_mask):
     """
     obs = (obstacle_mask > 0.5)
     
-    r_o = np.roll(obs, -1, axis=1); r_o[:, -1] = True
-    l_o = np.roll(obs, 1, axis=1); l_o[:, 0] = True
-    d_o = np.roll(obs, -1, axis=0); d_o[-1, :] = True
-    u_o = np.roll(obs, 1, axis=0); u_o[0, :] = True
+    # Set boundaries to False so outer edges of the grid act as open boundaries
+    r_o = np.roll(obs, -1, axis=1); r_o[:, -1] = False
+    l_o = np.roll(obs, 1, axis=1); l_o[:, 0] = False
+    d_o = np.roll(obs, -1, axis=0); d_o[-1, :] = True  # Keep bottom closed or open? Let's keep it open as False
+    u_o = np.roll(obs, 1, axis=0); u_o[0, :] = False
+    # Wait, let's make d_o[-1, :] False as well!
+    # Let's write it down:
+    # r_o[:, -1] = False
+    # l_o[:, 0] = False
+    # d_o[-1, :] = False
+    # u_o[0, :] = False
+    # This is correct.
+    r_o = np.roll(obs, -1, axis=1); r_o[:, -1] = False
+    l_o = np.roll(obs, 1, axis=1); l_o[:, 0] = False
+    d_o = np.roll(obs, -1, axis=0); d_o[-1, :] = False
+    u_o = np.roll(obs, 1, axis=0); u_o[0, :] = False
     
     u_new = u.copy()
     v_new = v.copy()
@@ -94,6 +106,8 @@ class StableFluidsSolver:
         # Parameters (settable mid-simulation)
         self.wind_angle = 270.0  # 0=north (blowing south), 90=east (blowing west), 270=west (blowing east)
         self.wind_speed = 0.5
+        self.decay_rate = 0.999  # Settable decay rate for simulation times
+        self.green_corridor_mask = np.zeros((grid_size, grid_size), dtype=np.float32)  # Mask for green corridors
         self.traffic_sources = {}  # dict mapping road segment index -> intensity
         self.point_sources = []    # list of (grid_x, grid_y, strength)
         
@@ -193,6 +207,12 @@ class StableFluidsSolver:
         self.u[fluid_mask] = 0.9 * self.u[fluid_mask] + 0.1 * u_wind
         self.v[fluid_mask] = 0.9 * self.v[fluid_mask] + 0.1 * v_wind
 
+        # Apply Green Corridor velocity dampening (reduce velocity by 50% in corridor cells)
+        if np.any(self.green_corridor_mask > 0.5):
+            corridor = (self.green_corridor_mask > 0.5)
+            self.u[corridor] *= 0.5
+            self.v[corridor] *= 0.5
+
         # Helper for boundary-clamped shifts
         def get_neighbors(field):
             r = np.empty_like(field)
@@ -213,13 +233,16 @@ class StableFluidsSolver:
             
             return r, l, d, u_n
 
-        # Bilinear semi-Lagrangian advection helper
-        def advect(field, u_field, v_field):
+        # Bilinear semi-Lagrangian advection helper with open boundaries support
+        def advect_open(field, u_field, v_field, default_inflow_value):
             h, w = field.shape
             grid_y, grid_x = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
             
             src_x = grid_x - u_field * dt
             src_y = grid_y - v_field * dt
+            
+            # Open boundaries check
+            inside = (src_x >= 0.0) & (src_x <= w - 1.0) & (src_y >= 0.0) & (src_y <= h - 1.0)
             
             src_x = np.clip(src_x, 0.0, w - 1.0)
             src_y = np.clip(src_y, 0.0, h - 1.0)
@@ -235,16 +258,25 @@ class StableFluidsSolver:
             wx = src_x - x0
             wy = src_y - y0
             
-            return (
+            interpolated = (
                 (1.0 - wx) * (1.0 - wy) * field[y0, x0] +
                 wx * (1.0 - wy) * field[y0, x1] +
                 (1.0 - wx) * wy * field[y1, x0] +
                 wx * wy * field[y1, x1]
             )
+            
+            if isinstance(default_inflow_value, np.ndarray):
+                interpolated[~inside] = default_inflow_value[~inside]
+            else:
+                interpolated[~inside] = default_inflow_value
+                
+            return interpolated
 
-        # 2. Advect velocity
-        u_advected = advect(self.u, self.u, self.v)
-        v_advected = advect(self.v, self.u, self.v)
+        # 2. Advect velocity (inflow is wind velocity)
+        u_inflow = np.full_like(self.u, u_wind)
+        v_inflow = np.full_like(self.v, v_wind)
+        u_advected = advect_open(self.u, self.u, self.v, u_inflow)
+        v_advected = advect_open(self.v, self.u, self.v, v_inflow)
         self.u, self.v = u_advected, v_advected
         
         # 3. Diffuse velocity (implicit, viscosity=0.0001)
@@ -270,6 +302,12 @@ class StableFluidsSolver:
             p = (r_p + l_p + d_p + u_p - div) / 4.0
             p = enforce_neumann_boundary(p, self.obstacle_mask)
             
+            # Enforce Dirichlet p=0 on open outer boundary edges (only where not buildings)
+            p[0, self.obstacle_mask[0, :] <= 0.5] = 0.0
+            p[-1, self.obstacle_mask[-1, :] <= 0.5] = 0.0
+            p[self.obstacle_mask[:, 0] <= 0.5, 0] = 0.0
+            p[self.obstacle_mask[:, -1] <= 0.5, -1] = 0.0
+            
         r_p, l_p, d_p, u_p = get_neighbors(p)
         self.u -= 0.5 * (r_p - l_p)
         self.v -= 0.5 * (d_p - u_p)
@@ -283,23 +321,28 @@ class StableFluidsSolver:
         # 5. Zero velocity inside obstacle cells and enforce no-penetration
         self.u, self.v = enforce_velocity_boundary(self.u, self.v, self.obstacle_mask)
         
-        # 6. Advect concentration
+        # 6. Advect concentration (clean air inflow: default_inflow_value = 0.0)
         self.conc = enforce_neumann_boundary(self.conc, self.obstacle_mask)
-        self.conc = advect(self.conc, self.u, self.v)
+        self.conc = advect_open(self.conc, self.u, self.v, 0.0)
         
         # Zero concentration inside obstacles
         self.conc[self.obstacle_mask > 0.5] = 0.0
+
+        # Apply Green Corridor absorption (absorb 35% concentration in corridor cells)
+        if np.any(self.green_corridor_mask > 0.5):
+            corridor = (self.green_corridor_mask > 0.5)
+            self.conc[corridor] *= 0.65
         
-        # 7. Add emissions
+        # 7. Add emissions (scaled down to prevent saturation and maintain high visual contrast)
         road_emission = self._get_road_emission()
-        self.conc += road_emission * dt
+        self.conc += road_emission * 0.05 * dt
         
         for gx, gy, strength in self.point_sources:
             if 0 <= gx < self.grid_size and 0 <= gy < self.grid_size:
                 self.conc[gy, gx] += strength * dt
                 
-        # 8. Apply slight concentration decay (dilution/deposition)
-        self.conc *= 0.999
+        # 8. Apply concentration decay (dilution/deposition)
+        self.conc *= self.decay_rate
 
     def get_state(self):
         """

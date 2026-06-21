@@ -121,14 +121,14 @@ async def lifespan(app: FastAPI):
     else:
         print("No pre-trained PINN estimator found. Will train from scratch.")
         
-    # Initialize geometries and set traffic intensity to medium (0.5) on all roads
+    # Initialize geometries and set traffic intensity to low (0.1) on all roads
     try:
         from backend.osm_loader import fetch_region
         # Indore target location coords
         lat, lon, radius = 22.7533, 75.8937, 800
         buildings_latlon, roads_latlon = fetch_region(lat, lon, radius)
         num_roads = len(roads_latlon)
-        solver.traffic_sources = {i: 0.5 for i in range(num_roads)}
+        solver.traffic_sources = {i: 0.1 for i in range(num_roads)}
     except Exception as e:
         print(f"Error fetching lat/lon elements on startup: {e}")
         buildings_latlon, roads_latlon = [], []
@@ -167,6 +167,12 @@ class TrafficSettings(BaseModel):
     road_id: int
     intensity: float
 
+class DecaySettings(BaseModel):
+    decay_rate: float
+
+class GreenCorridorSettings(BaseModel):
+    cells: list[dict]
+
 class SourceSettings(BaseModel):
     x: int
     y: int
@@ -188,6 +194,22 @@ def set_wind(settings: WindSettings):
     solver.wind_angle = settings.angle
     solver.wind_speed = settings.speed
     return {"message": "Wind updated successfully", "angle": settings.angle, "speed": settings.speed}
+
+@app.post("/set_decay")
+def set_decay(settings: DecaySettings):
+    solver.decay_rate = settings.decay_rate
+    return {"message": "Decay rate updated successfully", "decay_rate": settings.decay_rate}
+
+@app.post("/set_green_corridor")
+def set_green_corridor(settings: GreenCorridorSettings):
+    # Reset green corridor mask
+    solver.green_corridor_mask = np.zeros_like(solver.green_corridor_mask)
+    for cell in settings.cells:
+        gx, gy = cell.get("x"), cell.get("y")
+        if gx is not None and gy is not None:
+            if 0 <= gx < solver.grid_size and 0 <= gy < solver.grid_size:
+                solver.green_corridor_mask[gy, gx] = 1.0
+    return {"message": "Green corridor updated successfully", "active_cells": len(settings.cells)}
 
 @app.post("/set_traffic")
 def set_traffic(settings: TrafficSettings):
