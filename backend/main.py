@@ -1,4 +1,5 @@
 import os
+import base64
 import sys
 import asyncio
 import numpy as np
@@ -257,6 +258,24 @@ def add_building(settings: BuildingSettings):
 def reset_simulation():
     solver.conc = np.zeros_like(solver.conc)
     return {"message": "Concentration field reset successfully"}
+
+class ScreenshotSettings(BaseModel):
+    filename: str
+    dataUrl: str  # base64 data URL: "data:image/png;base64,..."
+
+@app.post("/save_screenshot")
+def save_screenshot(settings: ScreenshotSettings):
+    try:
+        os.makedirs('figures', exist_ok=True)
+        # Strip the data URL header
+        header, encoded = settings.dataUrl.split(',', 1)
+        img_bytes = base64.b64decode(encoded)
+        out_path = os.path.join('figures', settings.filename)
+        with open(out_path, 'wb') as f:
+            f.write(img_bytes)
+        return {"message": "Screenshot saved", "path": out_path}
+    except Exception as e:
+        return {"message": f"Error saving screenshot: {e}"}
 
 @app.get("/map_data")
 def get_map_data():
