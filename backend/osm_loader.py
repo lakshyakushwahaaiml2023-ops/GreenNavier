@@ -96,10 +96,11 @@ def fetch_region(center_lat, center_lon, radius_m=800):
                 for poly in geom.geoms:
                     buildings.append((poly, height))
 
-    # 4. Extract roads: list of (linestring, road_type)
+    # 4. Extract roads: list of (linestring, road_type, name)
     roads = []
     if not gdf_edges.empty:
         highway_col = 'highway' if 'highway' in gdf_edges.columns else None
+        name_col = 'name' if 'name' in gdf_edges.columns else None
         for idx, row in gdf_edges.iterrows():
             geom = row.geometry
             if geom is None:
@@ -120,11 +121,17 @@ def fetch_region(center_lat, center_lon, radius_m=800):
                 else:
                     road_type = 'residential'
                     
+            name_val = safe_get_scalar(row, name_col) if name_col else None
+            if not name_val:
+                name_val = f"Unnamed {road_type.capitalize()}"
+            else:
+                name_val = str(name_val)
+                    
             if geom.geom_type == 'LineString':
-                roads.append((geom, road_type))
+                roads.append((geom, road_type, name_val))
             elif geom.geom_type == 'MultiLineString':
                 for ls in geom.geoms:
-                    roads.append((ls, road_type))
+                    roads.append((ls, road_type, name_val))
                     
     return buildings, roads
 
@@ -178,7 +185,7 @@ def rasterize(buildings, roads, grid_size=128, center_lat=22.7533, center_lon=75
     
     # Project all geometries to meters relative to center
     proj_buildings = [(project_geom(poly, center_lat, center_lon, meters_per_deg_lat, meters_per_deg_lon), h) for poly, h in buildings]
-    proj_roads = [(project_geom(ls, center_lat, center_lon, meters_per_deg_lat, meters_per_deg_lon), t) for ls, t in roads]
+    proj_roads = [(project_geom(ls, center_lat, center_lon, meters_per_deg_lat, meters_per_deg_lon), t) for ls, t, *_ in roads]
     
     # Bounding box in meters
     min_x = -radius_m

@@ -129,7 +129,7 @@ class StableFluidsSolver:
             def map_y(y):
                 return int((max_y - y) / (max_y - min_y) * self.grid_size)
 
-            for i, (ls, road_type) in enumerate(roads):
+            for i, (ls, road_type, *_) in enumerate(roads):
                 proj_ls = project_geom(ls, lat, lon, meters_per_deg_lat, meters_per_deg_lon)
                 road_img = Image.new('L', (self.grid_size, self.grid_size), 0)
                 draw = ImageDraw.Draw(road_img)
@@ -187,6 +187,11 @@ class StableFluidsSolver:
         elif v_wind < 0:
             self.u[-1, :] = u_wind
             self.v[-1, :] = v_wind
+
+        # Apply wind body force (atmospheric forcing) in fluid cells to drive the wind in the interior
+        fluid_mask = (self.obstacle_mask <= 0.5)
+        self.u[fluid_mask] = 0.9 * self.u[fluid_mask] + 0.1 * u_wind
+        self.v[fluid_mask] = 0.9 * self.v[fluid_mask] + 0.1 * v_wind
 
         # Helper for boundary-clamped shifts
         def get_neighbors(field):

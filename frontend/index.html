@@ -3,15 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GreenNavier - Interactive Wind Simulation</title>
+    <title>GreenNavier | Real-time Air Quality Simulation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-color: #050508;
+            --panel-bg: rgba(10, 10, 18, 0.85);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --accent-green: #34d399;
+            --accent-yellow: #fbbf24;
+            --accent-red: #f87171;
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+        }
+
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #0b0f19;
-            color: #ffffff;
-            font-family: 'Outfit', 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            user-select: none;
         }
+
         #canvas-container {
             width: 100vw;
             height: 100vh;
@@ -20,49 +36,302 @@
             left: 0;
             z-index: 1;
         }
-        #ui-overlay {
+
+        /* HUD Styling */
+        .hud-panel {
             position: absolute;
-            top: 20px;
-            left: 20px;
             z-index: 10;
-            pointer-events: none;
-            background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
             padding: 20px;
-            border-radius: 12px;
-            max-width: 320px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+            transition: border-color 0.3s ease;
         }
+
+        /* Top Left Header */
+        #header-panel {
+            top: 24px;
+            left: 24px;
+            max-width: 380px;
+        }
+
         h1 {
-            margin: 0 0 8px 0;
-            font-size: 1.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #34d399, #059669);
+            font-family: 'Outfit', sans-serif;
+            margin: 0 0 6px 0;
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #10b981, #059669);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        p {
-            margin: 0 0 16px 0;
-            font-size: 0.875rem;
-            color: #94a3b8;
-            line-height: 1.5;
+
+        .subtitle {
+            margin: 0;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
-        .btn {
-            display: inline-block;
-            background: #059669;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 0.875rem;
+
+        /* Top Right Stats */
+        #stats-panel {
+            top: 24px;
+            right: 24px;
+            min-width: 260px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .stat-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        #stat-max-conc {
+            color: var(--accent-red);
+        }
+
+        /* Bottom Controls HUD */
+        #controls-panel {
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 1000px;
+            display: grid;
+            grid-template-columns: 180px 1fr 240px;
+            gap: 24px;
+            align-items: start;
+        }
+
+        .panel-section {
+            border-right: 1px solid var(--panel-border);
+            padding-right: 20px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .panel-section:last-child {
+            border-right: none;
+            padding-right: 0;
+        }
+
+        .section-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--accent-green);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0 0 12px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Compass */
+        .wind-widget {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .wind-slider-group {
+            width: 100%;
+            margin-top: 4px;
+        }
+
+        .wind-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Traffic sliders list */
+        .traffic-scroll {
+            max-height: 130px;
+            overflow-y: auto;
+            padding-right: 8px;
+            width: 100%;
+        }
+
+        .traffic-item {
+            margin-bottom: 12px;
+        }
+
+        .traffic-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .traffic-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        /* Scrollbar styling */
+        .traffic-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .traffic-scroll::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 2px;
+        }
+
+        .traffic-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+
+        /* Custom buttons and actions */
+        .ctrl-btn {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--panel-border);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
             cursor: pointer;
-            pointer-events: auto;
             transition: all 0.2s ease;
+            width: 100%;
+            margin-bottom: 8px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
         }
-        .btn:hover {
-            background: #10b981;
+
+        .ctrl-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.18);
             transform: translateY(-1px);
+        }
+
+        .ctrl-btn:active {
+            transform: translateY(1px);
+        }
+
+        .ctrl-btn-active {
+            background: var(--accent-green) !important;
+            color: #050508 !important;
+            border-color: var(--accent-green) !important;
+            box-shadow: 0 0 15px rgba(52, 211, 153, 0.4);
+        }
+
+        /* Placement Hint HUD */
+        #hint-hud {
+            position: absolute;
+            top: 110px;
+            left: 24px;
+            z-index: 10;
+            background: rgba(248, 113, 113, 0.9);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+            color: white;
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            display: none;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.9; }
+            50% { opacity: 0.6; }
+            100% { opacity: 0.9; }
+        }
+
+        /* Generic sliders */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+            margin: 6px 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.25);
+        }
+
+        /* Building Modal Overlay */
+        #building-modal {
+            display: none;
+            position: absolute;
+            z-index: 100;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(10, 10, 18, 0.9);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+            width: 260px;
+        }
+
+        /* Notifications */
+        #notification {
+            position: absolute;
+            top: 110px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: rgba(239, 68, 68, 0.9);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            display: none;
         }
     </style>
     <!-- Include Three.js via CDN -->
@@ -72,69 +341,1220 @@
 </head>
 <body>
     <div id="canvas-container"></div>
-    
-    <div id="ui-overlay">
+    <div id="flash-overlay" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(239, 68, 68, 0.25); z-index: 5; display: none; pointer-events: none; opacity: 0; transition: opacity 0.5s ease;"></div>
+    <div id="notification">Connecting to backend...</div>
+    <div id="hint-hud">Click on the map to place a factory stack</div>
+
+    <!-- Header HUD -->
+    <div id="header-panel" class="hud-panel">
+        <div class="subtitle">Vijay Nagar, Indore</div>
         <h1>GreenNavier</h1>
-        <p>Interactive fluid solver and wind flow visualization using OSM geographic data and neural network solvers.</p>
-        <button class="btn" id="start-simulation">Initialize Simulation</button>
+        <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4; margin-top: 8px;">
+            Real-time urban wind dynamics and air dispersion simulation using neural-physics solvers.
+        </div>
+    </div>
+
+    <!-- Stats HUD -->
+    <div id="stats-panel" class="hud-panel">
+        <div class="stat-row">
+            <span class="stat-label">Max PM2.5</span>
+            <span id="stat-max-conc" class="stat-value">0.00</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Physics Residual</span>
+            <span id="stat-residual" class="stat-value" style="color: #60a5fa;">0.00e+00</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Physics Health</span>
+            <span id="stat-physics-health" class="stat-value" style="color: var(--accent-green);">Good</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Step Count</span>
+            <span id="stat-step" class="stat-value" style="color: #e2e8f0;">0</span>
+        </div>
+        <div class="stat-row" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
+            <span class="stat-label">System State</span>
+            <span id="stat-status" class="stat-value" style="color: var(--accent-green); font-size: 0.9rem;">Connecting</span>
+        </div>
+        <div style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px;">
+            <span class="stat-label" style="display: block; margin-bottom: 8px;">Divergence History (last 200 steps)</span>
+            <canvas id="residual-chart" width="220" height="70" style="width: 100%; height: 70px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Bottom Controls HUD -->
+    <div id="controls-panel" class="hud-panel">
+        <!-- Wind Section -->
+        <div class="panel-section wind-widget">
+            <div class="section-title" style="width: 100%;">
+                <span>Wind Control</span>
+                <span class="wind-meta" id="wind-angle-label">270°</span>
+            </div>
+            <!-- Compass SVG -->
+            <svg id="wind-compass" width="76" height="76" viewBox="0 0 100 100" style="cursor: pointer;">
+                <circle cx="50" cy="50" r="45" fill="#08080c" stroke="rgba(255,255,255,0.12)" stroke-width="2" />
+                <text x="50" y="18" fill="#94a3b8" font-size="10" text-anchor="middle" font-weight="bold">N</text>
+                <text x="82" y="54" fill="#94a3b8" font-size="10" text-anchor="middle" font-weight="bold">E</text>
+                <text x="50" y="88" fill="#94a3b8" font-size="10" text-anchor="middle" font-weight="bold">S</text>
+                <text x="18" y="54" fill="#94a3b8" font-size="10" text-anchor="middle" font-weight="bold">W</text>
+                <!-- Arrow points North by default, rotate it -->
+                <g id="wind-arrow" transform="rotate(90 50 50)">
+                    <line x1="50" y1="80" x2="50" y2="20" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
+                    <polygon points="50,16 41,34 59,34" fill="#34d399" />
+                </g>
+            </svg>
+            <div class="wind-slider-group">
+                <div class="wind-label-row" style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary);">
+                    <span>Speed</span>
+                    <span id="wind-speed-label">0.30</span>
+                </div>
+                <input id="wind-speed-slider" type="range" min="0" max="100" value="30" />
+            </div>
+        </div>
+
+        <!-- Traffic Section -->
+        <div class="panel-section" style="display: grid; grid-template-rows: auto 1fr;">
+            <div class="section-title">
+                <span>Traffic Emissions</span>
+                <button id="btn-rush-hour" style="background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); color: var(--accent-yellow); font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;">Rush Hour</button>
+            </div>
+            <div id="traffic-sliders-container" class="traffic-scroll">
+                <div class="placeholder-text" style="font-size: 0.8rem; text-align: center; margin-top: 20px;">Fetching roads...</div>
+            </div>
+        </div>
+
+        <!-- Placements & Actions Section -->
+        <div class="panel-section" style="display: flex; flex-direction: column; justify-content: space-between; height: 100%;">
+            <div>
+                <div class="section-title">Placements</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                    <button id="btn-add-factory" class="ctrl-btn" style="margin-bottom: 0;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Factory
+                    </button>
+                    <button id="btn-add-building" class="ctrl-btn" style="margin-bottom: 0;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Building
+                    </button>
+                </div>
+                
+                <div style="border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 10px;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">Manual Coordinates (Grid)</div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <input id="manual-x" type="number" placeholder="X (0-127)" min="0" max="127" style="flex: 1; padding: 6px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 6px; color: white; outline: none; font-size: 0.8rem; text-align: center;" />
+                        <input id="manual-y" type="number" placeholder="Y (0-127)" min="0" max="127" style="flex: 1; padding: 6px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 6px; color: white; outline: none; font-size: 0.8rem; text-align: center;" />
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <button id="btn-manual-factory" class="ctrl-btn" style="margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">
+                            + Factory
+                        </button>
+                        <button id="btn-manual-building" class="ctrl-btn" style="margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">
+                            + Building
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div style="border-top: 1px solid var(--panel-border); padding-top: 10px; margin-top: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <button id="btn-wind-shift" class="ctrl-btn" style="color: #60a5fa; border-color: rgba(96,165,250,0.25); margin-bottom: 0;">Wind Shift</button>
+                    <button id="btn-reset" class="ctrl-btn" style="color: var(--accent-red); border-color: rgba(248,113,113,0.25); margin-bottom: 0;">Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Building Custom Modal Overlay -->
+    <div id="building-modal">
+        <h3 style="margin: 0 0 16px 0; font-family: 'Outfit'; font-size: 1.15rem; font-weight: 700;">Extrude Building</h3>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; text-transform: uppercase;">Width (meters)</label>
+            <input id="build-width" type="number" value="60" style="width: calc(100% - 18px); padding: 8px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 8px; color: white; outline: none; font-size: 0.9rem;" />
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; text-transform: uppercase;">Depth (meters)</label>
+            <input id="build-depth" type="number" value="60" style="width: calc(100% - 18px); padding: 8px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 8px; color: white; outline: none; font-size: 0.9rem;" />
+        </div>
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; text-transform: uppercase;">Height (meters)</label>
+            <input id="build-height" type="number" value="35" style="width: calc(100% - 18px); padding: 8px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 8px; color: white; outline: none; font-size: 0.9rem;" />
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <button id="modal-cancel" style="padding: 8px 16px; background: transparent; border: 1px solid var(--panel-border); border-radius: 8px; color: white; font-weight: 600; font-size: 0.8rem; cursor: pointer; transition: background 0.2s;">Cancel</button>
+            <button id="modal-submit" style="padding: 8px 16px; background: var(--accent-green); border: none; border-radius: 8px; color: #050508; font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: box-shadow 0.2s;">Place Mesh</button>
+        </div>
     </div>
 
     <script>
-        // Basic Three.js setup
+        // --- Geographic Projection Configuration ---
+        const center_lat = 22.7533;
+        const center_lon = 75.8937;
+        const radius_m = 800;
+
+        // Accurate ellipsoidal scaling factors at target latitude (WGS84)
+        const a = 6378137.0;
+        const e2 = 0.00669437999014;
+        const lat_rad = center_lat * Math.PI / 180.0;
+        const N = a / Math.sqrt(1.0 - e2 * Math.sin(lat_rad) ** 2);
+        const M = a * (1.0 - e2) / Math.pow(1.0 - e2 * Math.sin(lat_rad) ** 2, 1.5);
+        
+        const meters_per_deg_lat = M * (Math.PI / 180.0);
+        const meters_per_deg_lon = N * Math.cos(lat_rad) * (Math.PI / 180.0);
+
+        function project(lon, lat) {
+            const x = (lon - center_lon) * meters_per_deg_lon;
+            const y = (lat - center_lat) * meters_per_deg_lat;
+            return { x, y };
+        }
+
+        function worldToGrid(x, z) {
+            const gx = Math.round((x - (-800)) / 1600 * 128);
+            const gy = Math.round((800 - z) / 1600 * 128); // since z = -pt.y
+            return { gx: Math.max(0, Math.min(127, gx)), gy: Math.max(0, Math.min(127, gy)) };
+        }
+
+        // --- Three.js Scene Setup ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0b0f19);
+        scene.background = new THREE.Color(0x0a0a0f);
+        scene.fog = new THREE.FogExp2(0x0a0a0f, 0.0006);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 50, 100);
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 5000);
+        // Default isometric-ish view looking down at ~45 degrees
+        camera.position.set(500, 600, 800);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
-        controls.maxPolarAngle = Math.PI / 2 - 0.05; // don't go below ground
+        controls.maxPolarAngle = Math.PI / 2 - 0.02; // prevent camera going under ground
+        controls.minDistance = 100;
+        controls.maxDistance = 2000;
+        controls.target.set(0, 0, 0);
 
         // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
         scene.add(ambientLight);
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(100, 150, 50);
+        // Directional light from Northwest
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+        dirLight.position.set(-600, 900, -600);
         dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 100;
+        dirLight.shadow.camera.far = 2500;
+        const d = 900;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
 
-        // Ground helper representation
-        const gridHelper = new THREE.GridHelper(200, 50, 0x059669, 0x1e293b);
-        gridHelper.position.y = -0.5;
+        // Grid/Environment helpers
+        const gridHelper = new THREE.GridHelper(1600, 64, 0x1e293b, 0x0f172a);
+        gridHelper.position.y = 0.02;
         scene.add(gridHelper);
 
-        // Placeholder Box
-        const geometry = new THREE.BoxGeometry(20, 20, 20);
-        const material = new THREE.MeshStandardMaterial({ 
-            color: 0x34d399,
-            roughness: 0.4,
-            metalness: 0.1
+        // --- Ground Plane Setup ---
+        const groundGeom = new THREE.PlaneGeometry(1600, 1600);
+        const groundMat = new THREE.MeshStandardMaterial({ 
+            color: 0x0f0f18,
+            roughness: 0.85,
+            metalness: 0.2
         });
-        const cube = new THREE.Mesh(geometry, material);
-        cube.position.y = 10;
-        cube.castShadow = true;
-        cube.receiveShadow = true;
-        scene.add(cube);
+        const ground = new THREE.Mesh(groundGeom, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
 
-        // Animation Loop
+        // --- Pollution Ground Overlay Canvas Texture ---
+        const pollutionCanvas = document.createElement('canvas');
+        pollutionCanvas.width = 64;
+        pollutionCanvas.height = 64;
+        const pollutionCtx = pollutionCanvas.getContext('2d');
+        
+        const pollutionTexture = new THREE.CanvasTexture(pollutionCanvas);
+        pollutionTexture.minFilter = THREE.LinearFilter;
+        pollutionTexture.magFilter = THREE.LinearFilter;
+
+        const pollutionGeom = new THREE.PlaneGeometry(1600, 1600);
+        const pollutionMat = new THREE.MeshBasicMaterial({
+            map: pollutionTexture,
+            transparent: true,
+            opacity: 0.75,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending  // Glowing gas effect
+        });
+        const pollutionPlane = new THREE.Mesh(pollutionGeom, pollutionMat);
+        pollutionPlane.rotation.x = -Math.PI / 2;
+        pollutionPlane.position.y = 0.15; // float slightly above streets/ground
+        scene.add(pollutionPlane);
+
+        // --- Global State & Collections ---
+        const buildings_data = [];
+        const factoryMeshes = [];
+        let puffs = [];
+        const puffGeometry = new THREE.SphereGeometry(1, 8, 8); // shared geometry
+
+        // PINN Estimator States
+        let lastPhysicsWarning = false;
+        const residualHistory = [];
+        const maxHistoryLen = 200;
+
+        function flashRedOverlay() {
+            const overlay = document.getElementById('flash-overlay');
+            if (!overlay) return;
+            overlay.style.display = 'block';
+            overlay.style.opacity = '1';
+            setTimeout(() => {
+                overlay.style.opacity = '0';
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                }, 500);
+            }, 150);
+        }
+
+        function updateChart(newVal) {
+            const chartCanvas = document.getElementById('residual-chart');
+            if (!chartCanvas) return;
+            const chartCtx = chartCanvas.getContext('2d');
+            
+            residualHistory.push(newVal);
+            if (residualHistory.length > maxHistoryLen) {
+                residualHistory.shift();
+            }
+            
+            const w = chartCanvas.width;
+            const h = chartCanvas.height;
+            chartCtx.clearRect(0, 0, w, h);
+            
+            if (residualHistory.length < 2) return;
+            
+            let maxVal = Math.max(...residualHistory);
+            let minVal = Math.min(...residualHistory);
+            if (maxVal === minVal) {
+                maxVal += 0.001;
+                minVal -= 0.001;
+            }
+            const range = maxVal - minVal;
+            
+            // Draw grid
+            chartCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            chartCtx.lineWidth = 1;
+            for (let i = 1; i < 4; i++) {
+                const yGrid = h * (i / 4);
+                chartCtx.beginPath();
+                chartCtx.moveTo(0, yGrid);
+                chartCtx.lineTo(w, yGrid);
+                chartCtx.stroke();
+            }
+            
+            // Draw area
+            chartCtx.beginPath();
+            chartCtx.moveTo(0, h);
+            for (let i = 0; i < residualHistory.length; i++) {
+                const val = residualHistory[i];
+                const x = (i / (maxHistoryLen - 1)) * w;
+                const y = h - ((val - minVal) / range) * (h - 10) - 5;
+                chartCtx.lineTo(x, y);
+            }
+            chartCtx.lineTo((residualHistory.length - 1) / (maxHistoryLen - 1) * w, h);
+            chartCtx.closePath();
+            
+            const fillGrad = chartCtx.createLinearGradient(0, 0, 0, h);
+            fillGrad.addColorStop(0, 'rgba(96, 165, 250, 0.2)');
+            fillGrad.addColorStop(1, 'rgba(96, 165, 250, 0.0)');
+            chartCtx.fillStyle = fillGrad;
+            chartCtx.fill();
+            
+            // Draw line
+            chartCtx.beginPath();
+            for (let i = 0; i < residualHistory.length; i++) {
+                const val = residualHistory[i];
+                const x = (i / (maxHistoryLen - 1)) * w;
+                const y = h - ((val - minVal) / range) * (h - 10) - 5;
+                if (i === 0) {
+                    chartCtx.moveTo(x, y);
+                } else {
+                    chartCtx.lineTo(x, y);
+                }
+            }
+            chartCtx.strokeStyle = '#60a5fa';
+            chartCtx.lineWidth = 1.5;
+            chartCtx.stroke();
+        }
+
+        // Interactive Placement States
+        let placementMode = null; // 'factory' or 'building'
+        let pendingBuildingCoords = null; // cached click position for modal
+        let currentWindAngle = 270.0;
+        let currentWindSpeed = 0.3;
+        let windShiftInterval = null;
+
+        // --- Volumetric Puff Class ---
+        class Puff {
+            constructor(x, z, target_h, color) {
+                this.mesh = new THREE.Mesh(puffGeometry, new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: 0.28,
+                    depthWrite: false
+                }));
+                this.mesh.position.set(x, 0.2, z);
+                this.mesh.scale.setScalar(4);
+                scene.add(this.mesh);
+
+                this.y = 0.2;
+                this.target_h = target_h * 0.25; // rise up to 25% of nearby building height
+                this.age = 0;
+                this.maxAge = 40 + Math.random() * 40; // frames lifetime
+                this.velocity_y = (this.target_h / this.maxAge) * (0.8 + Math.random() * 0.4);
+                this.base_scale = 3 + Math.random() * 4;
+            }
+
+            update() {
+                this.age++;
+                this.y += this.velocity_y;
+                this.mesh.position.y = this.y;
+
+                // Expand as it rises
+                const scaleProgress = 1.0 + (this.age / this.maxAge) * 2.0;
+                this.mesh.scale.setScalar(this.base_scale * scaleProgress);
+
+                // Fade out
+                this.mesh.material.opacity = 0.28 * (1.0 - (this.age / this.maxAge));
+
+                return this.age < this.maxAge;
+            }
+
+            destroy() {
+                scene.remove(this.mesh);
+                this.mesh.material.dispose();
+            }
+        }
+
+        // Helper to locate building height nearby
+        function getNearbyBuildingHeight(x, z) {
+            let min_dist = Infinity;
+            let nearest_h = 10.5; // default fallback
+            for (let i = 0; i < buildings_data.length; i++) {
+                const b = buildings_data[i];
+                const dx = b.centroid.x - x;
+                const dz = b.centroid.z - z;
+                const dist = dx * dx + dz * dz; // squared dist is faster
+                if (dist < min_dist) {
+                    min_dist = dist;
+                    nearest_h = b.height;
+                }
+            }
+            // if within 80m (6400 squared), return its height
+            return min_dist < 6400 ? nearest_h : 10.5;
+        }
+
+        function spawnPuffs(conc, max_conc) {
+            if (max_conc < 0.1) return;
+            const threshold = 0.6 * max_conc;
+            
+            // Sub-sample 64x64 grid to spawn particles efficiently
+            for (let r = 0; r < 64; r += 2) {
+                for (let c = 0; c < 64; c += 2) {
+                    const val = conc[r][c];
+                    if (val > threshold && Math.random() < 0.08) {
+                        const x_pos = -800 + c * 25 + 12.5;
+                        const z_pos = -800 + r * 25 + 12.5;
+                        
+                        const target_h = getNearbyBuildingHeight(x_pos, z_pos);
+                        
+                        // Select color corresponding to pollution concentration
+                        const norm = Math.min(1.0, val / 2.0);
+                        let color = 0x10b981; // green
+                        if (norm > 0.7) {
+                            color = 0xf87171; // red
+                        } else if (norm > 0.35) {
+                            color = 0xfbbf24; // yellow
+                        }
+                        
+                        if (puffs.length < 400) { // particle count safety limit
+                            puffs.push(new Puff(x_pos, z_pos, target_h, color));
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Map Loader & Geometry Extrusion ---
+        async function loadMapData() {
+            try {
+                const response = await fetch('http://localhost:8000/map_data');
+                if (!response.ok) throw new Error("HTTP error " + response.status);
+                
+                const geojson = await response.json();
+                hideNotification();
+                
+                // 1. Extrude and render Buildings
+                geojson.buildings.features.forEach(feature => {
+                    const height = feature.properties.height;
+                    const coords = feature.geometry.coordinates[0];
+                    if (!coords || coords.length < 3) return;
+
+                    // Compute centroid for quick proximity lookup
+                    let sum_x = 0, sum_y = 0;
+                    coords.forEach(c => {
+                        const pt = project(c[0], c[1]);
+                        sum_x += pt.x;
+                        sum_y += pt.y;
+                    });
+                    const cx = sum_x / coords.length;
+                    const cz = -sum_y / coords.length;
+                    buildings_data.push({
+                        centroid: { x: cx, z: cz },
+                        height: height
+                    });
+
+                    // Create shape footprint with positive Y coordinates to align with Z-axis after rotation
+                    const shape = new THREE.Shape();
+                    const start = project(coords[0][0], coords[0][1]);
+                    shape.moveTo(start.x, start.y);
+                    for (let i = 1; i < coords.length; i++) {
+                        const pt = project(coords[i][0], coords[i][1]);
+                        shape.lineTo(pt.x, pt.y);
+                    }
+
+                    // Handle holes inside buildings if present
+                    if (feature.geometry.coordinates.length > 1) {
+                        for (let k = 1; k < feature.geometry.coordinates.length; k++) {
+                            const holeCoords = feature.geometry.coordinates[k];
+                            const holePath = new THREE.Path();
+                            const startHole = project(holeCoords[0][0], holeCoords[0][1]);
+                            holePath.moveTo(startHole.x, startHole.y);
+                            for (let i = 1; i < holeCoords.length; i++) {
+                                const pt = project(holeCoords[i][0], holeCoords[i][1]);
+                                holePath.lineTo(pt.x, pt.y);
+                            }
+                            shape.holes.push(holePath);
+                        }
+                    }
+
+                    // Extrude geometry along Z, stand upright by rotating mesh
+                    const extrudeSettings = { depth: height, bevelEnabled: false };
+                    const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    const mat = new THREE.MeshLambertMaterial({ 
+                        color: 0x1e1e2d, 
+                        roughness: 0.7 
+                    });
+                    
+                    const mesh = new THREE.Mesh(geom, mat);
+                    mesh.rotation.x = -Math.PI / 2;
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    scene.add(mesh);
+
+                    // Add subtle edges outline
+                    const edges = new THREE.EdgesGeometry(geom);
+                    const lineMat = new THREE.LineBasicMaterial({ color: 0x334155 });
+                    const line = new THREE.LineSegments(edges, lineMat);
+                    line.rotation.x = -Math.PI / 2;
+                    scene.add(line);
+                });
+
+                // 2. Render flat ribbon Roads
+                geojson.roads.features.forEach(feature => {
+                    const coords = feature.geometry.coordinates;
+                    if (!coords || coords.length < 2) return;
+
+                    const points = [];
+                    coords.forEach(c => {
+                        const pt = project(c[0], c[1]);
+                        points.push(new THREE.Vector3(pt.x, 0.05, -pt.y)); // float slightly above ground
+                    });
+
+                    const geom = new THREE.BufferGeometry().setFromPoints(points);
+                    const mat = new THREE.LineBasicMaterial({ 
+                        color: 0x38bdf8, 
+                        transparent: true, 
+                        opacity: 0.65 
+                    });
+                    const roadLine = new THREE.Line(geom, mat);
+                    scene.add(roadLine);
+                });
+
+                // 3. Render road sliders in HUD Traffic Panel
+                buildTrafficSliders(geojson.roads);
+                
+                console.log(`Successfully loaded ${buildings_data.length} buildings and features.`);
+            } catch (err) {
+                console.error("Failed to load map data from backend:", err);
+                showNotification("Failed to fetch map data. Make sure backend is running at http://localhost:8000");
+            }
+        }
+
+        // --- Render Traffic Sliders by Road Name groups ---
+        function buildTrafficSliders(roadsGeojson) {
+            const container = document.getElementById('traffic-sliders-container');
+            container.innerHTML = ''; // clear placeholder
+
+            const roadsByName = {};
+            roadsGeojson.features.forEach(feature => {
+                const name = feature.properties.name || "Local Street";
+                const id = feature.properties.id;
+                const type = feature.properties.road_type;
+                
+                if (!roadsByName[name]) {
+                    roadsByName[name] = {
+                        ids: [],
+                        type: type
+                    };
+                }
+                roadsByName[name].ids.push(id);
+            });
+
+            // Separate named and unnamed local streets
+            const roadNames = Object.keys(roadsByName).sort((a,b) => {
+                if (a.startsWith("Local") && !b.startsWith("Local")) return 1;
+                if (!a.startsWith("Local") && b.startsWith("Local")) return -1;
+                return a.localeCompare(b);
+            });
+
+            roadNames.forEach(name => {
+                const roadData = roadsByName[name];
+                
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'traffic-item';
+                
+                const labelRow = document.createElement('div');
+                labelRow.className = 'traffic-label';
+                labelRow.innerHTML = `<span>${name} (${roadData.type})</span><span class="intensity-val">50%</span>`;
+                
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.min = '0';
+                slider.max = '100';
+                slider.value = '50';
+                slider.className = 'road-slider';
+                slider.setAttribute('data-road-ids', roadData.ids.join(','));
+
+                slider.oninput = (e) => {
+                    const val = e.target.value;
+                    labelRow.querySelector('.intensity-val').innerText = val + "%";
+                    // Optimistic update - send POST for all segments in background
+                    roadData.ids.forEach(id => {
+                        fetch('http://localhost:8000/set_traffic', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ road_id: id, intensity: parseFloat(val) / 100.0 })
+                        }).catch(err => console.error(err));
+                    });
+                };
+
+                itemDiv.appendChild(labelRow);
+                itemDiv.appendChild(slider);
+                container.appendChild(itemDiv);
+            });
+        }
+
+        // --- WebSocket Simulation Client ---
+        let ws;
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:8000/ws/simulation');
+            
+            ws.onopen = () => {
+                console.log("WebSocket connection established.");
+                document.getElementById('stat-status').innerText = "Running";
+                document.getElementById('stat-status').style.color = "var(--accent-green)";
+            };
+
+            ws.onclose = () => {
+                console.log("WebSocket connection closed. Retrying in 2 seconds...");
+                document.getElementById('stat-status').innerText = "Disconnected";
+                document.getElementById('stat-status').style.color = "var(--accent-red)";
+                setTimeout(connectWebSocket, 2000);
+            };
+
+            ws.onerror = (err) => {
+                console.error("WebSocket error:", err);
+            };
+
+            ws.onmessage = (event) => {
+                const frame = JSON.parse(event.data);
+                const conc = frame.conc;
+                
+                // Draw 64x64 concentration grid to texture canvas
+                const imgData = pollutionCtx.createImageData(64, 64);
+                const data = imgData.data;
+
+                for (let r = 0; r < 64; r++) {
+                    for (let c = 0; c < 64; c++) {
+                        const val = conc[r][c];
+                        // Max scaling boundary set to 2.0
+                        const norm = Math.min(1.0, val / 2.0);
+
+                        let red, green, blue;
+                        if (norm < 0.5) {
+                            // Green (#00ff44) to Yellow (#ffff00)
+                            const t = norm / 0.5;
+                            red = Math.round(0 * (1 - t) + 255 * t);
+                            green = Math.round(255 * (1 - t) + 255 * t);
+                            blue = Math.round(68 * (1 - t) + 0 * t);
+                        } else {
+                            // Yellow (#ffff00) to Red (#ff2200)
+                            const t = (norm - 0.5) / 0.5;
+                            red = Math.round(255 * (1 - t) + 255 * t);
+                            green = Math.round(255 * (1 - t) + 34 * t);
+                            blue = Math.round(0 * (1 - t) + 0 * t);
+                        }
+
+                        // Set alpha mapped to concentration
+                        const alpha = Math.round(norm * 220); // max alpha opacity
+
+                        // Canvas coordinate mapping
+                        const idx = (r * 64 + c) * 4;
+                        data[idx] = red;
+                        data[idx + 1] = green;
+                        data[idx + 2] = blue;
+                        data[idx + 3] = val > 0.02 ? alpha : 0; // transparent for clean values
+                    }
+                }
+                pollutionCtx.putImageData(imgData, 0, 0);
+                pollutionTexture.needsUpdate = true;
+
+                // Spawn volumetric particles in high concentration cells
+                spawnPuffs(conc, frame.max_conc);
+
+                // Update UI Stats
+                document.getElementById('stat-max-conc').innerText = frame.max_conc.toFixed(2) + " PM2.5";
+                document.getElementById('stat-residual').innerText = frame.physics_residual.toExponential(4);
+                document.getElementById('stat-step').innerText = frame.step;
+
+                // Update Physics Health status & colors
+                const physicsWarning = frame.physics_warning || false;
+                const physicsScore = frame.physics_score || 0.0;
+                const healthEl = document.getElementById('stat-physics-health');
+                
+                if (physicsWarning) {
+                    healthEl.innerText = "Violation";
+                    healthEl.style.color = "var(--accent-red)";
+                    
+                    // Trigger flash if warning just activated
+                    if (!lastPhysicsWarning) {
+                        flashRedOverlay();
+                    }
+                } else if (physicsScore > 0.02) {
+                    healthEl.innerText = "Mild";
+                    healthEl.style.color = "var(--accent-yellow)";
+                } else {
+                    healthEl.innerText = "Good";
+                    healthEl.style.color = "var(--accent-green)";
+                }
+                lastPhysicsWarning = physicsWarning;
+
+                // Update line chart
+                updateChart(frame.physics_residual);
+            };
+        }
+
+        // --- HUD Controls Wiring & Handlers ---
+        
+        // Wind angle compass drag interaction
+        const compass = document.getElementById('wind-compass');
+        const arrow = document.getElementById('wind-arrow');
+        let isDraggingWind = false;
+
+        compass.addEventListener('mousedown', (e) => {
+            isDraggingWind = true;
+            updateWindFromMouse(e);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDraggingWind) updateWindFromMouse(e);
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDraggingWind = false;
+        });
+
+        function updateWindFromMouse(e) {
+            if (windShiftInterval) clearInterval(windShiftInterval); // cancel active shifts
+            
+            const rect = compass.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const dx = e.clientX - cx;
+            const dy = e.clientY - cy;
+            
+            let angleRad = Math.atan2(dx, -dy);
+            let angleDeg = angleRad * 180 / Math.PI;
+            if (angleDeg < 0) angleDeg += 360;
+            
+            // Wind source direction is opposite to arrow pointing vector
+            let windAngle = (angleDeg + 180) % 360;
+            
+            arrow.setAttribute('transform', `rotate(${angleDeg} 50 50)`);
+            document.getElementById('wind-angle-label').innerText = Math.round(windAngle) + "°";
+            
+            currentWindAngle = windAngle;
+            sendWindSettings();
+        }
+
+        // Wind Speed Slider
+        const speedSlider = document.getElementById('wind-speed-slider');
+        speedSlider.oninput = (e) => {
+            if (windShiftInterval) clearInterval(windShiftInterval);
+            const speed = parseFloat(e.target.value) / 100.0;
+            document.getElementById('wind-speed-label').innerText = speed.toFixed(2);
+            currentWindSpeed = speed;
+            sendWindSettings();
+        };
+
+        function sendWindSettings() {
+            fetch('http://localhost:8000/set_wind', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ angle: currentWindAngle, speed: currentWindSpeed })
+            }).catch(err => console.error("Failed to update wind:", err));
+        }
+
+        // Wind Shift Action (smooth randomized rotation)
+        document.getElementById('btn-wind-shift').onclick = () => {
+            if (windShiftInterval) clearInterval(windShiftInterval);
+            
+            const targetAngle = Math.random() * 360;
+            const targetSpeed = 0.15 + Math.random() * 0.7;
+            const startAngle = currentWindAngle;
+            const startSpeed = currentWindSpeed;
+            
+            let elapsed = 0;
+            const duration = 2000; // 2 seconds transition
+            const stepTime = 30;
+            
+            windShiftInterval = setInterval(() => {
+                elapsed += stepTime;
+                const t = Math.min(1.0, elapsed / duration);
+                
+                // Solve shortest angular direction
+                let angleDiff = targetAngle - startAngle;
+                if (angleDiff > 180) angleDiff -= 360;
+                if (angleDiff < -180) angleDiff += 360;
+                
+                currentWindAngle = (startAngle + angleDiff * t + 360) % 360;
+                currentWindSpeed = startSpeed + (targetSpeed - startSpeed) * t;
+                
+                // Update UI elements
+                const arrowRotate = (currentWindAngle + 180) % 360;
+                arrow.setAttribute('transform', `rotate(${arrowRotate} 50 50)`);
+                speedSlider.value = currentWindSpeed * 100;
+                document.getElementById('wind-speed-label').innerText = currentWindSpeed.toFixed(2);
+                document.getElementById('wind-angle-label').innerText = Math.round(currentWindAngle) + "°";
+                
+                sendWindSettings();
+                
+                if (t >= 1.0) {
+                    clearInterval(windShiftInterval);
+                    windShiftInterval = null;
+                }
+            }, stepTime);
+        };
+
+        // Reset Simulation Action
+        document.getElementById('btn-reset').onclick = () => {
+            fetch('http://localhost:8000/reset', { method: 'POST' })
+                .then(() => {
+                    // Flash scene background to green momentarily
+                    const originalColor = scene.background.clone();
+                    scene.background.set(0x10b981);
+                    
+                    let progress = 0;
+                    const flashInterval = setInterval(() => {
+                        progress += 0.08;
+                        scene.background.lerpColors(new THREE.Color(0x10b981), new THREE.Color(0x0a0a0f), progress);
+                        if (progress >= 1.0) {
+                            clearInterval(flashInterval);
+                            scene.background.copy(originalColor);
+                        }
+                    }, 25);
+                })
+                .catch(err => console.error("Reset failed:", err));
+        };
+
+        // Rush Hour Action (animate sliders to 80% and wind to West 0.6)
+        document.getElementById('btn-rush-hour').onclick = () => {
+            const sliders = document.querySelectorAll('.road-slider');
+            
+            sliders.forEach(slider => {
+                const startVal = parseFloat(slider.value);
+                const targetVal = 80;
+                const roadIds = slider.getAttribute('data-road-ids').split(',').map(id => parseInt(id));
+                
+                let elapsed = 0;
+                const duration = 600; // 0.6 seconds transition
+                const stepTime = 30;
+                
+                const slideInterval = setInterval(() => {
+                    elapsed += stepTime;
+                    const t = Math.min(1.0, elapsed / duration);
+                    const val = startVal + (targetVal - startVal) * t;
+                    
+                    slider.value = val;
+                    slider.previousElementSibling.querySelector('.intensity-val').innerText = Math.round(val) + "%";
+                    
+                    // Optimistic updates
+                    roadIds.forEach(id => {
+                        fetch('http://localhost:8000/set_traffic', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ road_id: id, intensity: val / 100.0 })
+                        }).catch(e => console.error(e));
+                    });
+
+                    if (t >= 1.0) clearInterval(slideInterval);
+                }, stepTime);
+            });
+
+            // Shift wind to West (270 degrees, 0.6 speed)
+            animateWindTo(270, 0.6);
+        };
+
+        function animateWindTo(targetAngle, targetSpeed) {
+            if (windShiftInterval) clearInterval(windShiftInterval);
+            const startAngle = currentWindAngle;
+            const startSpeed = currentWindSpeed;
+            let elapsed = 0;
+            const duration = 800;
+            const stepTime = 30;
+            
+            windShiftInterval = setInterval(() => {
+                elapsed += stepTime;
+                const t = Math.min(1.0, elapsed / duration);
+                
+                let angleDiff = targetAngle - startAngle;
+                if (angleDiff > 180) angleDiff -= 360;
+                if (angleDiff < -180) angleDiff += 360;
+                
+                currentWindAngle = (startAngle + angleDiff * t + 360) % 360;
+                currentWindSpeed = startSpeed + (targetSpeed - startSpeed) * t;
+                
+                const arrowRotate = (currentWindAngle + 180) % 360;
+                arrow.setAttribute('transform', `rotate(${arrowRotate} 50 50)`);
+                speedSlider.value = currentWindSpeed * 100;
+                document.getElementById('wind-speed-label').innerText = currentWindSpeed.toFixed(2);
+                document.getElementById('wind-angle-label').innerText = Math.round(currentWindAngle) + "°";
+                
+                sendWindSettings();
+                
+                if (t >= 1.0) {
+                    clearInterval(windShiftInterval);
+                    windShiftInterval = null;
+                }
+            }, stepTime);
+        }
+
+        // --- Placement Click Intersections ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let mouseDownPos = { x: 0, y: 0 };
+
+        window.addEventListener('mousedown', (e) => {
+            mouseDownPos.x = e.clientX;
+            mouseDownPos.y = e.clientY;
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            // Check if it's a drag or a click
+            const dx = Math.abs(e.clientX - mouseDownPos.x);
+            const dy = Math.abs(e.clientY - mouseDownPos.y);
+            if (dx < 5 && dy < 5) {
+                onCanvasClick(e);
+            }
+        });
+
+        function setPlacementMode(mode) {
+            placementMode = mode;
+            const hint = document.getElementById('hint-hud');
+            const factoryBtn = document.getElementById('btn-add-factory');
+            const buildingBtn = document.getElementById('btn-add-building');
+            
+            factoryBtn.classList.remove('ctrl-btn-active');
+            buildingBtn.classList.remove('ctrl-btn-active');
+            
+            if (mode === 'factory') {
+                hint.innerText = "Click on the ground grid to place a factory stack";
+                hint.style.display = 'block';
+                factoryBtn.classList.add('ctrl-btn-active');
+                renderer.domElement.style.cursor = 'crosshair';
+            } else if (mode === 'building') {
+                hint.innerText = "Click on the ground grid to place a building footprint";
+                hint.style.display = 'block';
+                buildingBtn.classList.add('ctrl-btn-active');
+                renderer.domElement.style.cursor = 'crosshair';
+            } else {
+                hint.style.display = 'none';
+                renderer.domElement.style.cursor = 'auto';
+            }
+        }
+
+        function flashWarning(msg) {
+            showNotification(msg);
+            setTimeout(hideNotification, 3000);
+        }
+
+        function getManualCoords() {
+            const xVal = document.getElementById('manual-x').value.trim();
+            const yVal = document.getElementById('manual-y').value.trim();
+            if (xVal === "" || yVal === "") {
+                flashWarning("Please enter both X and Y coordinates (0-127).");
+                return null;
+            }
+            const gx = parseInt(xVal);
+            const gy = parseInt(yVal);
+            if (isNaN(gx) || gx < 0 || gx > 127 || isNaN(gy) || gy < 0 || gy > 127) {
+                flashWarning("Coordinates must be integers between 0 and 127.");
+                return null;
+            }
+            // Convert to world coordinates (centered to map correctly via worldToGrid round math)
+            const x = -800 + gx * 12.5;
+            const z = 800 - gy * 12.5;
+            return { x, z, gx, gy };
+        }
+
+        document.getElementById('btn-manual-factory').onclick = () => {
+            const coords = getManualCoords();
+            if (coords) {
+                setPlacementMode(null);
+                placeFactory(coords.x, coords.z, coords.gx, coords.gy);
+                document.getElementById('manual-x').value = '';
+                document.getElementById('manual-y').value = '';
+            }
+        };
+
+        document.getElementById('btn-manual-building').onclick = () => {
+            const coords = getManualCoords();
+            if (coords) {
+                setPlacementMode(null);
+                showBuildingModal(coords.x, coords.z, coords.gx, coords.gy);
+                document.getElementById('manual-x').value = '';
+                document.getElementById('manual-y').value = '';
+            }
+        };
+
+        document.getElementById('btn-add-factory').onclick = () => {
+            if (placementMode === 'factory') setPlacementMode(null);
+            else setPlacementMode('factory');
+        };
+
+        document.getElementById('btn-add-building').onclick = () => {
+            if (placementMode === 'building') setPlacementMode(null);
+            else setPlacementMode('building');
+        };
+
+        function onCanvasClick(e) {
+            // Ignore clicks targeting HUD panels, modals, or notifications
+            if (e.target.closest('.hud-panel') || e.target.closest('#building-modal') || e.target.closest('#notification')) {
+                return;
+            }
+
+            // Map mouse to device normalized coordinates
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            // Handle factory removal (click cylinder in normal mode)
+            if (!placementMode) {
+                const intersectsFactories = raycaster.intersectObjects(factoryMeshes);
+                if (intersectsFactories.length > 0) {
+                    removeFactory(intersectsFactories[0].object);
+                    return;
+                }
+            }
+
+            // Handle placements on the ground plane
+            if (placementMode) {
+                const intersects = raycaster.intersectObject(ground);
+                if (intersects.length > 0) {
+                    const pt = intersects[0].point;
+                    const grid = worldToGrid(pt.x, pt.z);
+                    
+                    if (placementMode === 'factory') {
+                        placeFactory(pt.x, pt.z, grid.gx, grid.gy);
+                        setPlacementMode(null);
+                    } else if (placementMode === 'building') {
+                        showBuildingModal(pt.x, pt.z, grid.gx, grid.gy);
+                    }
+                }
+            }
+        }
+
+        // Factory cylinder placement helpers
+        function placeFactory(x, z, gx, gy) {
+            const strength = 3.0; // stack emission intensity
+            
+            const geom = new THREE.CylinderGeometry(8, 8, 30, 16);
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: 0xff5500, 
+                emissive: 0xff3300,
+                emissiveIntensity: 0.65,
+                roughness: 0.3
+            });
+            const cylinder = new THREE.Mesh(geom, mat);
+            cylinder.position.set(x, 15, z); // stand upright (half-height offset)
+            cylinder.castShadow = true;
+            cylinder.receiveShadow = true;
+            cylinder.userData = { gx, gy };
+            scene.add(cylinder);
+            factoryMeshes.push(cylinder);
+
+            // Glowing point light on top of the stack
+            const light = new THREE.PointLight(0xff4400, 1.8, 120);
+            light.position.set(x, 30, z);
+            scene.add(light);
+            cylinder.userData.light = light;
+
+            // Send to backend
+            fetch('http://localhost:8000/add_source', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ x: gx, y: gy, strength: strength })
+            }).catch(err => console.error("Failed to add factory:", err));
+        }
+
+        function removeFactory(mesh) {
+            scene.remove(mesh);
+            if (mesh.userData.light) scene.remove(mesh.userData.light);
+            
+            const idx = factoryMeshes.indexOf(mesh);
+            if (idx > -1) factoryMeshes.splice(idx, 1);
+
+            fetch('http://localhost:8000/remove_source', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ x: mesh.userData.gx, y: mesh.userData.gy })
+            }).catch(err => console.error("Failed to remove factory:", err));
+
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+        }
+
+        // Custom building placement modal triggers
+        const modal = document.getElementById('building-modal');
+        
+        function showBuildingModal(x, z, gx, gy) {
+            pendingBuildingCoords = { x, z, gx, gy };
+            modal.style.display = 'block';
+        }
+
+        document.getElementById('modal-cancel').onclick = closeModal;
+        
+        function closeModal() {
+            modal.style.display = 'none';
+            pendingBuildingCoords = null;
+            setPlacementMode(null);
+        }
+
+        document.getElementById('modal-submit').onclick = () => {
+            const w = parseFloat(document.getElementById('build-width').value);
+            const d = parseFloat(document.getElementById('build-depth').value);
+            const h = parseFloat(document.getElementById('build-height').value);
+            
+            if (pendingBuildingCoords) {
+                placeBuilding(
+                    pendingBuildingCoords.x, 
+                    pendingBuildingCoords.z, 
+                    pendingBuildingCoords.gx, 
+                    pendingBuildingCoords.gy, 
+                    w, d, h
+                );
+            }
+            closeModal();
+        };
+
+        function placeBuilding(x, z, gx, gy, w_m, d_m, h_m) {
+            // Convert dimensions in meters to grid cells (12.5m per cell)
+            const w_grid = Math.max(1, Math.round(w_m / 12.5));
+            const h_grid = Math.max(1, Math.round(d_m / 12.5));
+
+            // Create shape in Three.js (centered on click point)
+            const shape = new THREE.Shape();
+            const hw = w_m / 2;
+            const hd = d_m / 2;
+            
+            // Positive Y coords map to negative Z in Three.js world space after rotation
+            shape.moveTo(x - hw, z - hd);
+            shape.lineTo(x + hw, z - hd);
+            shape.lineTo(x + hw, z + hd);
+            shape.lineTo(x - hw, z + hd);
+            shape.closePath();
+
+            const extrudeSettings = { depth: h_m, bevelEnabled: false };
+            const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            const mat = new THREE.MeshLambertMaterial({ color: 0x1e1e2d, roughness: 0.7 });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+
+            // Edges outline
+            const edges = new THREE.EdgesGeometry(geom);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x475569 });
+            const line = new THREE.LineSegments(edges, lineMat);
+            line.rotation.x = -Math.PI / 2;
+            scene.add(line);
+
+            // Add centroid reference to local list
+            buildings_data.push({
+                centroid: { x: x, z: z },
+                height: h_m
+            });
+
+            // Calculate start coordinates for the backend grid matrix
+            const gx_start = Math.max(0, Math.round(gx - w_grid / 2));
+            const gy_start = Math.max(0, Math.round(gy - h_grid / 2));
+
+            // Send POST request
+            fetch('http://localhost:8000/add_building', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    x: gx_start,
+                    y: gy_start,
+                    w: w_grid,
+                    h: h_grid,
+                    height_m: h_m
+                })
+            }).catch(err => console.error("Failed to add building:", err));
+        }
+
+        // --- Notification UI Helpers ---
+        function showNotification(text) {
+            const el = document.getElementById('notification');
+            el.innerText = text;
+            el.style.display = 'block';
+        }
+
+        function hideNotification() {
+            document.getElementById('notification').style.display = 'none';
+        }
+
+        // --- Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
-            cube.rotation.y += 0.01;
+
+            // Update volumetric smoke puffs
+            puffs = puffs.filter(p => {
+                const keep = p.update();
+                if (!keep) {
+                    p.destroy();
+                }
+                return keep;
+            });
+
             controls.update();
             renderer.render(scene, camera);
         }
 
-        // Window resize handler
+        // --- Window Resize Handler ---
         window.addEventListener('resize', onWindowResize, false);
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -142,7 +1562,14 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        animate();
+        // --- Initializer ---
+        async function init() {
+            animate();
+            await loadMapData();
+            connectWebSocket();
+        }
+
+        init();
     </script>
 </body>
 </html>

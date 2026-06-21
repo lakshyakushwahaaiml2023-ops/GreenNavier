@@ -20,12 +20,17 @@ roads_latlon = []
 active_connections = set()
 step_counter = 0
 
+pinn_model = None
+pinn_buffer = []  # list of (state_64, residual)
+current_physics_score = 0.0
+current_physics_warning = False
+
 async def simulation_worker():
     """
     Background worker that continuously steps the fluid solver every 50ms.
     Broadcasts the downsampled concentration data to all active WebSocket clients.
     """
-    global step_counter, solver, active_connections
+    global step_counter, solver, active_connections, current_physics_score, current_physics_warning, pinn_model
     while True:
         try:
             # Step the physical simulation (dt=1.0)
@@ -34,13 +39,47 @@ async def simulation_worker():
             
             # Downsample 128x128 concentration grid to 64x64 using block averaging
             conc_64 = solver.conc.reshape(64, 2, 64, 2).mean(axis=(1, 3))
+            u_64 = solver.u.reshape(64, 2, 64, 2).mean(axis=(1, 3))
+            v_64 = solver.v.reshape(64, 2, 64, 2).mean(axis=(1, 3))
+            state_64 = np.stack([conc_64, u_64, v_64], axis=0) # (3, 64, 64)
+            
+            # Record residual
+            res = solver.residuals[-1] if solver.residuals else 0.0
+            pinn_buffer.append((state_64, res))
+            if len(pinn_buffer) > 2000:
+                pinn_buffer.pop(0)
+                
+            # Run inference every 10 steps
+            if step_counter % 10 == 0 and pinn_model is not None:
+                try:
+                    import torch
+                    model_in = torch.tensor(state_64, dtype=torch.float32).unsqueeze(0)
+                    pinn_model.eval()
+                    with torch.no_grad():
+                        pred = pinn_model(model_in)
+                        current_physics_score = float(pred[0].item())
+                    current_physics_warning = (current_physics_score > 0.05)
+                except Exception as err:
+                    print(f"Error running PINN inference: {err}")
+                    
+            # Trigger background training every 500 steps
+            if step_counter % 500 == 0 and len(pinn_buffer) >= 50:
+                try:
+                    buffer_copy = list(pinn_buffer)
+                    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                    from backend.pinn import train_pinn
+                    asyncio.create_task(asyncio.to_thread(train_pinn, pinn_model, buffer_copy, device))
+                except Exception as err:
+                    print(f"Error launching PINN training: {err}")
             
             # Prepare state frame
             frame = {
                 "conc": conc_64.tolist(),
                 "max_conc": float(solver.conc.max()),
-                "physics_residual": float(solver.residuals[-1]) if solver.residuals else 0.0,
-                "step": step_counter
+                "physics_residual": res,
+                "step": step_counter,
+                "physics_score": current_physics_score,
+                "physics_warning": current_physics_warning
             }
             
             # Broadcast frame to all connected WebSocket clients
@@ -61,7 +100,7 @@ async def lifespan(app: FastAPI):
     """
     FastAPI lifespan manager for startup and shutdown procedures.
     """
-    global solver, buildings_latlon, roads_latlon
+    global solver, buildings_latlon, roads_latlon, pinn_model
     # Load OSM data masks and initialize solver
     solver = StableFluidsSolver(npz_path='data/grid_masks.npz')
     
@@ -69,6 +108,19 @@ async def lifespan(app: FastAPI):
     solver.wind_angle = 270.0
     solver.wind_speed = 0.3
     
+    # Initialize PINN model
+    import torch
+    from backend.pinn import PINNErrorEstimator
+    pinn_model = PINNErrorEstimator()
+    if os.path.exists('data/pinn_estimator.pt'):
+        try:
+            pinn_model.load_state_dict(torch.load('data/pinn_estimator.pt', map_location='cpu'))
+            print("Loaded pre-trained PINN error estimator weights.")
+        except Exception as e:
+            print(f"Error loading PINN estimator weights: {e}")
+    else:
+        print("No pre-trained PINN estimator found. Will train from scratch.")
+        
     # Initialize geometries and set traffic intensity to medium (0.5) on all roads
     try:
         from backend.osm_loader import fetch_region
@@ -198,12 +250,13 @@ def get_map_data():
         })
     
     road_features = []
-    for i, (ls, r_type) in enumerate(roads_latlon):
+    for i, (ls, r_type, name) in enumerate(roads_latlon):
         road_features.append({
             "type": "Feature",
             "geometry": mapping(ls),
             "properties": {
                 "road_type": r_type,
+                "name": name,
                 "id": i
             }
         })
@@ -232,7 +285,9 @@ async def websocket_endpoint(websocket: WebSocket):
             "conc": conc_64.tolist(),
             "max_conc": float(solver.conc.max()),
             "physics_residual": float(solver.residuals[-1]) if solver.residuals else 0.0,
-            "step": step_counter
+            "step": step_counter,
+            "physics_score": current_physics_score,
+            "physics_warning": current_physics_warning
         }
         await websocket.send_json(frame)
         

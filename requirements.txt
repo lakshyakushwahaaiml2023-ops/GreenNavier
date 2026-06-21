@@ -7,3 +7,4 @@ osmnx
 shapely
 Pillow
 matplotlib
+websockets
