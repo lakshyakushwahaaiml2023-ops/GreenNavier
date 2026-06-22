@@ -21,6 +21,17 @@ It combines:
 - A **Three.js 3D scene** built from real OpenStreetMap buildings and roads
 - **Interactive demo modes** including a scripted Green Corridor intervention that measurably reduces mean PM2.5 by ~14%
 
+### 🆕 Advanced Interactive Features & Interventions
+
+GreenNavier supports advanced real-time modifications directly inside the 3D viewport:
+- **Interactive Bounding Box Region Selector**: An integrated fullscreen Leaflet map on startup lets you draw a custom simulation bounding box ($200\text{ m} - 1500\text{ m}$) centered anywhere in Indore. The 3D scene and fluid grids reload and rebuild dynamically.
+- **100% Offline Indore Mode**: Dynamically clips and loads OpenStreetMap buildings and roads locally using pre-cached pickles, enabling offline simulation.
+- **Drag-to-Draw Building Placement**: Click and drag on the ground to draw custom building footprints with grid snapping. Choose its height ($3\text{ m} - 50\text{ m}$) using a floating popup, extruding it as a distinct blue-gray building with a temporary 2-second pulsing highlight.
+- **8-Handle Building Resizing & Translation**: Clicking any custom building reveals 8 drag handles (white cubes) on its base to adjust width/depth with a live dimensions label, or drag the building body to translate it on the grid.
+- **Interactive Point Source Factories**: Click to place custom factory cylinders with shimmering top faces and ambient orange PointLights. Adjust emission strength via floating sliders and radius via a draggable base ring.
+- **Escape Key Actions**: Instantly cancels active placement actions or deselects current objects.
+- **Panel Minimize / Restore**: Collapse the controls panel down off-screen to maximize viewport space (retaining stats visibility) using a close button, and restore it via a floating gear settings button.
+
 ---
 
 ## 🏗️ Architecture
@@ -201,12 +212,15 @@ greennavier/
 │   ├── main.py          # FastAPI app — WebSocket, REST endpoints, simulation loop
 │   ├── solver.py        # StableFluidsSolver — Navier-Stokes on 128×128 grid
 │   ├── pinn.py          # PINNErrorEstimator — 3-layer CNN, online training
-│   └── osm_loader.py    # OSMnx fetch + rasterise to grid masks
+│   └── osm_loader.py    # OSMnx fetch + rasterise to grid masks (online/offline)
 ├── frontend/
 │   └── index.html       # Full Three.js app (self-contained, no build step)
 ├── data/
 │   ├── grid_masks.npz   # Pre-rasterised obstacle / road / height maps
-│   └── pinn_estimator.pt  # Saved PINN weights (auto-generated at runtime)
+│   ├── pinn_estimator.pt  # Saved PINN weights (auto-generated at runtime)
+│   ├── indore_buildings_offline.pkl  # Pre-cached Indore buildings for offline clipping
+│   ├── indore_roads_offline.pkl      # Pre-cached Indore roads for offline clipping
+│   └── osm_features.pkl              # Pre-cached general OSM features
 ├── cache/               # OSMnx HTTP cache (JSON)
 ├── figures/             # Generated poster figures (300 DPI PNGs)
 ├── generate_figures.py  # Standalone script — runs solver, saves all poster figures
@@ -238,11 +252,14 @@ This runs the solver for **500 steps × 2 configurations** (no corridor / with g
 
 ## 🔭 Future Scope
 
+### Completed Implementations
+- [x] **3D pollution volume rendering** — Integrated real-time WebGL volumetric fog rendering with slider-controlled density
+- [x] **Time-of-day scheduling** — Added presets (morning, noon, evening, night) that automatically animate wind parameters and scale traffic emissions dynamically
+- [x] **Dynamic City Scaling** — Enabled interactive region selector (Leaflet map) to select custom 3D viewports dynamically
+
 ### Near-Term
-- [ ] **3D pollution volume rendering** — use a WebGL3 compute shader to render PM2.5 as a volumetric fog above street level
 - [ ] **Multi-species transport** — add CO, NOₓ, O₃ as separate concentration fields with inter-species chemistry
 - [ ] **Wind field from real sensor data** — ingest live anemometer readings from Indore Smart City API to replace the uniform wind body force
-- [ ] **Time-of-day scheduling** — automate traffic intensity curves from real traffic count data (peak hours, weekday/weekend profiles)
 
 ### Medium-Term
 - [ ] **PINN-adaptive solver** — when the PINN flags low residual steps, skip the expensive Helmholtz projection and use the PINN's predicted correction instead (~15 % speedup already estimated)
