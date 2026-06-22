@@ -1,26 +1,13 @@
 import os
-import json
 import base64
 import sys
 import asyncio
-import datetime
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from shapely.geometry import mapping
-
-# Load .env from the backend directory
-from dotenv import load_dotenv
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
-
-# Groq client (lazy-initialised so startup still works if key is missing)
-try:
-    from groq import Groq as GroqClient
-    _groq_client = GroqClient(api_key=os.environ.get('GROQ_API_KEY', ''))
-except Exception:
-    _groq_client = None
 
 # Add parent directory to path to ensure robust imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,6 +23,12 @@ step_counter = 0
 
 pinn_model = None
 pinn_buffer = []  # list of (state_64, residual)
+
+# User-placed elements tracking
+user_buildings = {}  # id -> {x1, y1, x2, y2, height_m}
+user_sources = {}    # id -> (gx, gy, strength)
+base_obstacle_mask = None
+base_height_map = None
 current_physics_score = 0.0
 current_physics_warning = False
 
@@ -81,8 +74,20 @@ async def simulation_worker():
                 try:
                     buffer_copy = list(pinn_buffer)
                     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-                    from backend.pinn import train_pinn
-                    asyncio.create_task(asyncio.to_thread(train_pinn, pinn_model, buffer_copy, device))
+                    
+                    async def run_training():
+                        from backend.pinn import train_pinn
+                        import torch
+                        await asyncio.to_thread(train_pinn, buffer_copy, device)
+                        # Reload the newly trained weights into the main thread's model (always kept on CPU)
+                        if pinn_model is not None and os.path.exists('data/pinn_estimator.pt'):
+                            try:
+                                pinn_model.load_state_dict(torch.load('data/pinn_estimator.pt', map_location='cpu'))
+                                print("[PINN Trainer] Swapped trained model into main simulation worker.")
+                            except Exception as load_err:
+                                print(f"Error loading trained PINN model: {load_err}")
+
+                    asyncio.create_task(run_training())
                 except Exception as err:
                     print(f"Error launching PINN training: {err}")
             
@@ -114,9 +119,17 @@ async def lifespan(app: FastAPI):
     """
     FastAPI lifespan manager for startup and shutdown procedures.
     """
-    global solver, buildings_latlon, roads_latlon, pinn_model
+    global solver, buildings_latlon, roads_latlon, pinn_model, base_obstacle_mask, base_height_map, user_buildings, user_sources
+    import backend.pinn
+    backend.pinn.stop_training = False
     # Load OSM data masks and initialize solver
     solver = StableFluidsSolver(npz_path='data/grid_masks.npz')
+    
+    # Store base masks for custom modifications
+    base_obstacle_mask = solver.obstacle_mask.copy()
+    base_height_map = solver.height_map.copy()
+    user_buildings = {}
+    user_sources = {}
     
     # Default parameters: west wind (270 degrees) at speed 0.3
     solver.wind_angle = 270.0
@@ -154,6 +167,9 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown simulation loop
+    import backend.pinn
+    backend.pinn.stop_training = True
+    
     app.state.simulation_task.cancel()
     try:
         await app.state.simulation_task
@@ -188,20 +204,24 @@ class GreenCorridorSettings(BaseModel):
     cells: list[dict]
 
 class SourceSettings(BaseModel):
+    id: str
     x: int
     y: int
     strength: float
 
 class RemoveSourceSettings(BaseModel):
-    x: int
-    y: int
+    id: str
 
 class BuildingSettings(BaseModel):
-    x: int
-    y: int
-    w: int
-    h: int
+    id: str
+    x1: int
+    y1: int
+    x2: int
+    y2: int
     height_m: float
+
+class RemoveBuildingSettings(BaseModel):
+    id: str
 
 class RegionSettings(BaseModel):
     min_lat: float
@@ -211,7 +231,7 @@ class RegionSettings(BaseModel):
 
 @app.post("/load_region")
 async def load_region(settings: RegionSettings):
-    global solver, buildings_latlon, roads_latlon, step_counter
+    global solver, buildings_latlon, roads_latlon, step_counter, base_obstacle_mask, base_height_map, user_buildings, user_sources
     from backend.osm_loader import fetch_and_rasterize_bbox
     try:
         buildings, roads, obstacle_mask, road_mask, height_map, center_lat, center_lon, radius_m = await asyncio.to_thread(
@@ -238,6 +258,12 @@ async def load_region(settings: RegionSettings):
         radius_m=radius_m
     )
     
+    # Store base masks for the new region
+    base_obstacle_mask = solver.obstacle_mask.copy()
+    base_height_map = solver.height_map.copy()
+    user_buildings = {}
+    user_sources = {}
+
     num_roads = len(roads_latlon)
     solver.traffic_sources = {i: 0.1 for i in range(num_roads)}
     solver.wind_angle = 270.0
@@ -251,90 +277,6 @@ async def load_region(settings: RegionSettings):
         "center": [center_lat, center_lon],
         "radius_m": radius_m
     }
-
-@app.get("/fetch_area_context")
-async def fetch_area_context(lat: float, lon: float, name: str = "Unknown Area"):
-    """
-    Calls Groq llama3-70b-8192 to get urban pollution context for the selected area.
-    Applies the traffic_level and known_industries to the live solver.
-    Falls back silently to defaults if the API call fails.
-    """
-    global solver
-
-    # --- Build Groq prompt ---
-    now_ist = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
-    time_str = now_ist.strftime("%H:%M IST, %A")
-
-    system_prompt = (
-        "You are an urban pollution data assistant. Given a neighborhood in Indore, India, "
-        "return a JSON object with these fields:\n"
-        "- traffic_level: float 0.0-1.0 (estimated current traffic intensity based on time of day and area type)\n"
-        "- known_industries: list of strings (known factories or industrial zones nearby, max 3)\n"
-        "- road_types: object mapping road names to traffic intensity (0.0-1.0)\n"
-        "- pollution_notes: string (one sentence about this area's known pollution issues)\n"
-        "Return ONLY valid JSON, no explanation."
-    )
-    user_msg = f"Area: {name}, Indore. Current time: {time_str}. Coordinates: {lat:.4f}, {lon:.4f}"
-
-    # Defaults used if Groq is unavailable
-    context = {
-        "traffic_level": 0.5,
-        "known_industries": [],
-        "road_types": {},
-        "pollution_notes": "No AI context available — using default parameters.",
-        "groq_available": False
-    }
-
-    if _groq_client:
-        try:
-            chat = _groq_client.chat.completions.create(
-                model="llama3-70b-8192",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": user_msg}
-                ],
-                temperature=0.3,
-                max_tokens=512,
-                timeout=12.0
-            )
-            raw = chat.choices[0].message.content.strip()
-            # Strip markdown fences if model wraps response
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            parsed = json.loads(raw)
-            context["traffic_level"]    = float(parsed.get("traffic_level", 0.5))
-            context["known_industries"] = parsed.get("known_industries", [])[:3]
-            context["road_types"]       = parsed.get("road_types", {})
-            context["pollution_notes"]  = str(parsed.get("pollution_notes", ""))
-            context["groq_available"]   = True
-        except Exception as groq_err:
-            print(f"[Groq] context fetch failed: {groq_err} — falling back to defaults")
-
-    # --- Apply context to live solver ---
-    if solver:
-        # Set uniform traffic level across all road sources
-        tl = context["traffic_level"]
-        for road_id in list(solver.traffic_sources.keys()):
-            solver.traffic_sources[road_id] = tl
-
-        # Place point sources at approximate grid positions for known industries
-        grid_size = solver.grid_size  # 128
-        solver.point_sources = []
-        industries = context["known_industries"]
-        positions = [
-            (int(grid_size * 0.25), int(grid_size * 0.25)),
-            (int(grid_size * 0.75), int(grid_size * 0.30)),
-            (int(grid_size * 0.50), int(grid_size * 0.75)),
-        ]
-        for i, industry in enumerate(industries[:3]):
-            gx, gy = positions[i]
-            solver.point_sources.append((gx, gy, 0.6))
-            print(f"[Groq] Placed source for '{industry}' at grid ({gx},{gy})")
-
-    context["area_name"] = name
-    return context
 
 @app.post("/set_wind")
 def set_wind(settings: WindSettings):
@@ -363,42 +305,84 @@ def set_traffic(settings: TrafficSettings):
     solver.traffic_sources[settings.road_id] = settings.intensity
     return {"message": "Traffic updated successfully", "road_id": settings.road_id, "intensity": settings.intensity}
 
+# Helper to restamp all active user buildings onto the base masks
+def rebuild_obstacle_masks():
+    global solver, base_obstacle_mask, base_height_map, user_buildings
+    if solver is None or base_obstacle_mask is None or base_height_map is None:
+        return
+    # Reset to base (OSM only)
+    solver.obstacle_mask = base_obstacle_mask.copy()
+    solver.height_map = base_height_map.copy()
+    # Stamp user buildings
+    for b in user_buildings.values():
+        x0 = max(0, min(127, min(b['x1'], b['x2'])))
+        x1 = max(0, min(128, max(b['x1'], b['x2'])))
+        y0 = max(0, min(127, min(b['y1'], b['y2'])))
+        y1 = max(0, min(128, max(b['y1'], b['y2'])))
+        if x0 == x1:
+            x1 = min(128, x0 + 1)
+        if y0 == y1:
+            y1 = min(128, y0 + 1)
+        solver.obstacle_mask[y0:y1, x0:x1] = 1.0
+        solver.height_map[y0:y1, x0:x1] = b['height_m']
+
 @app.post("/add_source")
 def add_source(settings: SourceSettings):
-    # Check if point source already exists at coordinates, if so update it, else append
-    found = False
-    for idx, (sx, sy, _) in enumerate(solver.point_sources):
-        if sx == settings.x and sy == settings.y:
-            solver.point_sources[idx] = (settings.x, settings.y, settings.strength)
-            found = True
-            break
-    if not found:
-        solver.point_sources.append((settings.x, settings.y, settings.strength))
-    return {"message": "Point source added/updated", "x": settings.x, "y": settings.y, "strength": settings.strength}
+    global user_sources, solver
+    user_sources[settings.id] = (settings.x, settings.y, settings.strength)
+    solver.point_sources = list(user_sources.values())
+    return {"message": "Point source added successfully", "id": settings.id}
+
+@app.post("/update_source")
+def update_source(settings: SourceSettings):
+    global user_sources, solver
+    user_sources[settings.id] = (settings.x, settings.y, settings.strength)
+    solver.point_sources = list(user_sources.values())
+    return {"message": "Point source updated successfully", "id": settings.id}
 
 @app.post("/remove_source")
 def remove_source(settings: RemoveSourceSettings):
-    initial_len = len(solver.point_sources)
-    solver.point_sources = [
-        (sx, sy, strength) for sx, sy, strength in solver.point_sources
-        if not (sx == settings.x and sy == settings.y)
-    ]
-    if len(solver.point_sources) < initial_len:
+    global user_sources, solver
+    if settings.id in user_sources:
+        del user_sources[settings.id]
+        solver.point_sources = list(user_sources.values())
         return {"message": "Point source removed successfully"}
     return {"message": "Point source not found"}
 
 @app.post("/add_building")
 def add_building(settings: BuildingSettings):
-    # Clamp grid coordinates to 128x128 boundary
-    x0 = max(0, min(127, settings.x))
-    y0 = max(0, min(127, settings.y))
-    x1 = max(0, min(128, settings.x + settings.w))
-    y1 = max(0, min(128, settings.y + settings.h))
-    
-    # Set building inside obstacle mask and height map live
-    solver.obstacle_mask[y0:y1, x0:x1] = 1.0
-    solver.height_map[y0:y1, x0:x1] = settings.height_m
-    return {"message": "Building added successfully", "coords": (x0, y0, x1, y1)}
+    global user_buildings
+    user_buildings[settings.id] = {
+        "x1": settings.x1,
+        "y1": settings.y1,
+        "x2": settings.x2,
+        "y2": settings.y2,
+        "height_m": settings.height_m
+    }
+    rebuild_obstacle_masks()
+    return {"message": "Building added successfully", "id": settings.id}
+
+@app.post("/update_building")
+def update_building(settings: BuildingSettings):
+    global user_buildings
+    user_buildings[settings.id] = {
+        "x1": settings.x1,
+        "y1": settings.y1,
+        "x2": settings.x2,
+        "y2": settings.y2,
+        "height_m": settings.height_m
+    }
+    rebuild_obstacle_masks()
+    return {"message": "Building updated successfully", "id": settings.id}
+
+@app.post("/remove_building")
+def remove_building(settings: RemoveBuildingSettings):
+    global user_buildings
+    if settings.id in user_buildings:
+        del user_buildings[settings.id]
+        rebuild_obstacle_masks()
+        return {"message": "Building removed successfully"}
+    return {"message": "Building not found"}
 
 @app.post("/reset")
 def reset_simulation():

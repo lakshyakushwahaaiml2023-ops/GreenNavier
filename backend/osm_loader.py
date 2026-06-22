@@ -324,34 +324,68 @@ def fetch_and_rasterize_bbox(min_lat, max_lat, min_lon, max_lon):
     print(f"Original select bbox meters: {width_m:.1f}m x {height_m:.1f}m")
     print(f"Padded square bbox center: ({center_lat}, {center_lon}), radius: {radius_m:.1f}m")
     
-    # 2. Fetch from OSMnx
+    # 2. Fetch from OSMnx (or use offline pre-cached files if available)
     # Bbox format in OSMnx 2.x is (left, bottom, right, top) = (min_lon, min_lat, max_lon, max_lat)
     bbox_tuple = (pad_min_lon, pad_min_lat, pad_max_lon, pad_max_lat)
     
-    # Fetch buildings
-    try:
-        try:
-            gdf_buildings = ox.features_from_bbox(bbox=bbox_tuple, tags={'building': True})
-        except TypeError:
-            # Fallback for positional signature
-            gdf_buildings = ox.features_from_bbox(pad_max_lat, pad_min_lat, pad_max_lon, pad_min_lon, tags={'building': True})
-        print(f"Fetched {len(gdf_buildings)} building features.")
-    except Exception as e:
-        print(f"Warning: Failed to fetch buildings: {e}")
-        gdf_buildings = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+    offline_buildings_path = 'data/indore_buildings_offline.pkl'
+    offline_roads_path = 'data/indore_roads_offline.pkl'
+    
+    use_offline = os.path.exists(offline_buildings_path) and os.path.exists(offline_roads_path)
+    
+    if use_offline:
+        import pickle
+        from shapely.geometry import box
+        print("[OSM] Offline cache detected. Loading and clipping region offline...")
         
-    # Fetch road network
-    try:
+        # Load buildings
         try:
-            G = ox.graph_from_bbox(bbox=bbox_tuple, network_type='all')
-        except TypeError:
-            # Fallback for positional signature
-            G = ox.graph_from_bbox(pad_max_lat, pad_min_lat, pad_max_lon, pad_min_lon, network_type='all')
-        gdf_nodes, gdf_edges = ox.graph_to_gdfs(G)
-        print(f"Fetched {len(gdf_edges)} road segments.")
-    except Exception as e:
-        print(f"Warning: Failed to fetch roads: {e}")
-        gdf_edges = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+            with open(offline_buildings_path, 'rb') as f:
+                gdf_buildings_all = pickle.load(f)
+            bbox_poly = box(pad_min_lon, pad_min_lat, pad_max_lon, pad_max_lat)
+            gdf_buildings = gpd.clip(gdf_buildings_all, bbox_poly)
+            print(f"[OSM] Loaded & clipped {len(gdf_buildings)} buildings from local cache.")
+        except Exception as e:
+            print(f"Warning: Failed to load offline buildings: {e}. Falling back to online.")
+            use_offline = False
+            
+        # Load roads
+        if use_offline:
+            try:
+                with open(offline_roads_path, 'rb') as f:
+                    G_all = pickle.load(f)
+                G = ox.truncate.truncate_graph_bbox(G_all, bbox_tuple)
+                gdf_nodes, gdf_edges = ox.graph_to_gdfs(G)
+                print(f"[OSM] Loaded & clipped {len(gdf_edges)} road segments from local cache.")
+            except Exception as e:
+                print(f"Warning: Failed to load offline roads: {e}. Falling back to online.")
+                use_offline = False
+
+    if not use_offline:
+        # Fetch buildings
+        try:
+            try:
+                gdf_buildings = ox.features_from_bbox(bbox=bbox_tuple, tags={'building': True})
+            except TypeError:
+                # Fallback for positional signature
+                gdf_buildings = ox.features_from_bbox(pad_max_lat, pad_min_lat, pad_max_lon, pad_min_lon, tags={'building': True})
+            print(f"Fetched {len(gdf_buildings)} building features.")
+        except Exception as e:
+            print(f"Warning: Failed to fetch buildings: {e}")
+            gdf_buildings = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+            
+        # Fetch road network
+        try:
+            try:
+                G = ox.graph_from_bbox(bbox=bbox_tuple, network_type='all')
+            except TypeError:
+                # Fallback for positional signature
+                G = ox.graph_from_bbox(pad_max_lat, pad_min_lat, pad_max_lon, pad_min_lon, network_type='all')
+            gdf_nodes, gdf_edges = ox.graph_to_gdfs(G)
+            print(f"Fetched {len(gdf_edges)} road segments.")
+        except Exception as e:
+            print(f"Warning: Failed to fetch roads: {e}")
+            gdf_edges = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
         
     # 3. Parse buildings: list of (polygon, height_m)
     buildings = []

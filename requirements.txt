@@ -8,5 +8,3 @@ shapely
 Pillow
 matplotlib
 websockets
-groq
-python-dotenv

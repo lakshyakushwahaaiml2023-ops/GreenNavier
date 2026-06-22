@@ -54,17 +54,29 @@ def compute_numerical_divergence(u, v):
     
     return du_dx + dv_dy
 
-def train_pinn(model, buffer, device, save_path="data/pinn_estimator.pt"):
+stop_training = False
+
+def train_pinn(buffer, device, save_path="data/pinn_estimator.pt"):
     """
-    Trains the PINN model on a copy of the memory sample buffer.
+    Trains a local instance of the PINN model on a copy of the memory sample buffer.
     Run asynchronously in a separate OS thread to avoid blocking the main server.
     """
+    global stop_training
     try:
         if len(buffer) < 10:
             print("[PINN Trainer] Not enough samples to start training.")
             return
 
         print(f"[PINN Trainer] Starting training pass on {len(buffer)} samples...")
+        
+        # Instantiate a new local model to avoid cross-thread device/state conflicts
+        model = PINNErrorEstimator()
+        if os.path.exists(save_path):
+            try:
+                model.load_state_dict(torch.load(save_path, map_location='cpu'))
+            except Exception as load_err:
+                print(f"[PINN Trainer] Error loading existing weights: {load_err}")
+
         model.to(device)
         model.train()
         
@@ -85,10 +97,17 @@ def train_pinn(model, buffer, device, save_path="data/pinn_estimator.pt"):
         
         # Run training epochs
         for epoch in range(5):
+            if stop_training:
+                print("[PINN Trainer] Training aborted due to server shutdown.")
+                return
+                
             permutation = torch.randperm(dataset_size)
             epoch_loss = 0.0
             
             for i in range(0, dataset_size, batch_size):
+                if stop_training:
+                    print("[PINN Trainer] Training aborted due to server shutdown.")
+                    return
                 indices = permutation[i:i+batch_size]
                 batch_x = X[indices]
                 batch_y = Y[indices]
@@ -124,7 +143,7 @@ def train_pinn(model, buffer, device, save_path="data/pinn_estimator.pt"):
             
         # Save model checkpoint
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        # Move back to CPU for easier deployment
+        # Move back to CPU for saving
         model.to('cpu')
         torch.save(model.state_dict(), save_path)
         print(f"[PINN Trainer] Training complete. Saved model to {save_path}")

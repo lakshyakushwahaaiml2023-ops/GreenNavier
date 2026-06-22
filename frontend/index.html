@@ -121,74 +121,50 @@
         #controls-panel {
             bottom: 24px;
             left: 50%;
-            transform: translateX(-50%);
+            transform: translateX(-50%) translateY(0);
             width: 90%;
             max-width: 1000px;
             display: grid;
             grid-template-columns: 180px 1fr 240px;
             gap: 24px;
             align-items: start;
-            /* Minimize transition: slide panel down off-screen */
-            transition: transform 0.3s ease, opacity 0.3s ease;
-            position: relative; /* needed for absolute × button */
+            transition: transform 300ms ease, border-color 0.3s ease;
         }
-        #controls-panel.panel-hidden {
-            transform: translateX(-50%) translateY(calc(100% + 32px));
-            opacity: 0;
-            pointer-events: none;
+
+        #controls-panel.minimized {
+            transform: translateX(-50%) translateY(calc(100% + 40px));
         }
-        /* Floating gear restore button */
-        #panel-restore-btn {
-            position: fixed;
+
+        #btn-minimize-close:hover {
+            background: rgba(255, 255, 255, 0.25) !important;
+            color: white !important;
+        }
+
+        #btn-minimize-restore {
+            position: absolute;
             bottom: 24px;
             right: 24px;
-            z-index: 20;
-            width: 44px;
-            height: 44px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
-            background: rgba(14, 16, 26, 0.85);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(52, 211, 153, 0.35);
-            color: #34d399;
-            font-size: 1.25rem;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: white;
+            font-size: 1.1rem;
             cursor: pointer;
             display: none;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 8px 24px -8px rgba(0,0,0,0.6);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            z-index: 100;
+            transition: all 0.3s ease;
         }
-        #panel-restore-btn:hover {
-            transform: scale(1.12);
-            box-shadow: 0 12px 28px -8px rgba(52,211,153,0.3);
-        }
-        /* Panel close × button */
-        #panel-close-btn {
-            position: absolute;
-            top: -12px;
-            right: -12px;
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.12);
-            backdrop-filter: blur(6px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: rgba(255, 255, 255, 0.75);
-            font-size: 0.85rem;
-            font-weight: 700;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.2s ease, color 0.2s ease;
-            z-index: 11;
-            line-height: 1;
-        }
-        #panel-close-btn:hover {
-            background: rgba(239, 68, 68, 0.3);
-            color: #fff;
-            border-color: rgba(239, 68, 68, 0.5);
+
+        #btn-minimize-restore:hover {
+            background: rgba(15, 23, 42, 0.85);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
         }
 
         .panel-section {
@@ -388,22 +364,90 @@
             transform: scale(1.25);
         }
 
-        /* Building Modal Overlay */
-        #building-modal {
-            display: none;
+        /* Floating Popups & Labels */
+        .floating-popup {
             position: absolute;
-            z-index: 100;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(10, 10, 18, 0.9);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--panel-border);
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
-            width: 260px;
+            z-index: 10005;
+            background: rgba(10, 10, 18, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 10px 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-family: 'Outfit', sans-serif;
+            color: white;
+            font-size: 0.8rem;
+            transform: translate(-50%, -100%);
+            margin-top: -15px;
+            pointer-events: auto;
+        }
+        .popup-title {
+            font-weight: 600;
+            text-align: center;
+        }
+        .popup-actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .popup-btn {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s ease;
+        }
+        .popup-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .popup-btn.btn-ok {
+            background: rgba(52, 211, 153, 0.2);
+            border-color: rgba(52, 211, 153, 0.4);
+            color: var(--accent-green);
+        }
+        .popup-btn.btn-ok:hover {
+            background: rgba(52, 211, 153, 0.35);
+        }
+        .popup-btn.btn-cancel {
+            background: rgba(248, 113, 113, 0.15);
+            border-color: rgba(248, 113, 113, 0.3);
+            color: var(--accent-red);
+        }
+        .popup-btn.btn-cancel:hover {
+            background: rgba(248, 113, 113, 0.3);
+        }
+        .popup-btn.btn-delete {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #ef4444;
+            flex: 1;
+            font-size: 0.9rem;
+            padding: 4px;
+        }
+        .popup-btn.btn-delete:hover {
+            background: rgba(239, 68, 68, 0.4);
+        }
+        #dimensions-label {
+            position: absolute;
+            display: none;
+            background: rgba(10, 10, 18, 0.85);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: 'Outfit';
+            font-size: 0.75rem;
+            pointer-events: none;
+            z-index: 10005;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transform: translate(-50%, -100%);
+            margin-top: -10px;
         }
 
         /* Notifications */
@@ -479,67 +523,7 @@
         }
     </style>
 
-    <!-- ── Step 2: AI Context Modal (shown after region loads, before sim starts) ── -->
-    <div id="context-modal" style="display:none; position:fixed; inset:0; z-index:9000; background:rgba(5,5,8,0.82); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); align-items:center; justify-content:center;">
-        <div id="context-card" style="background:rgba(14,16,26,0.97); border:1px solid rgba(52,211,153,0.35); border-radius:20px; padding:32px 36px; max-width:560px; width:92vw; box-shadow:0 30px 70px -20px rgba(0,0,0,0.85), 0 0 0 1px rgba(52,211,153,0.08); font-family:'Outfit',sans-serif; position:relative; overflow:hidden;">
-            <!-- Glow accent -->
-            <div style="position:absolute;top:-80px;right:-80px;width:220px;height:220px;background:radial-gradient(circle,rgba(16,185,129,0.15) 0%,transparent 70%);pointer-events:none;"></div>
-            <!-- Header -->
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-                <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">🧠</div>
-                <div>
-                    <div id="ctx-title" style="font-size:1.2rem;font-weight:800;color:#fff;line-height:1.2;">Setting up simulation...</div>
-                    <div style="font-size:0.78rem;color:rgba(52,211,153,0.85);font-weight:600;margin-top:2px;">Powered by Groq · llama3-70b-8192</div>
-                </div>
-                <svg id="ctx-spinner" width="26" height="26" viewBox="0 0 38 38" stroke="#10b981" style="margin-left:auto;flex-shrink:0;animation:spin 1s linear infinite;">
-                    <g fill="none" fill-rule="evenodd"><g transform="translate(1 1)" stroke-width="3">
-                        <circle stroke-opacity=".2" cx="18" cy="18" r="18"/>
-                        <path d="M36 18c0-9.94-8.06-18-18-18"/>
-                    </g></g>
-                </svg>
-            </div>
-            <!-- Divider -->
-            <div style="height:1px;background:linear-gradient(90deg,rgba(52,211,153,0.3),transparent);margin:18px 0;"></div>
-            <!-- Content (hidden until fetch completes) -->
-            <div id="ctx-content" style="display:none;">
-                <!-- Industries found -->
-                <div style="margin-bottom:18px;">
-                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(52,211,153,0.7);margin-bottom:8px;">Industrial Sources Detected</div>
-                    <div id="ctx-industries" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
-                </div>
-                <!-- Traffic bar -->
-                <div style="margin-bottom:18px;">
-                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(52,211,153,0.7);margin-bottom:8px;">AI Traffic Estimate</div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <div style="flex:1;height:8px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;">
-                            <div id="ctx-traffic-bar" style="height:100%;background:linear-gradient(90deg,#10b981,#34d399);border-radius:4px;width:50%;transition:width 0.8s cubic-bezier(.4,0,.2,1);"></div>
-                        </div>
-                        <div id="ctx-traffic-pct" style="font-size:1rem;font-weight:800;color:#fff;min-width:42px;text-align:right;">50%</div>
-                    </div>
-                    <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);margin-top:6px;">Applied to all road sources. Adjust per-road sliders in the HUD after simulation starts.</div>
-                </div>
-                <!-- Pollution notes -->
-                <div style="margin-bottom:22px;">
-                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(52,211,153,0.7);margin-bottom:8px;">Pollution Context</div>
-                    <div id="ctx-notes" style="font-size:0.88rem;color:rgba(255,255,255,0.8);line-height:1.55;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 14px;"></div>
-                </div>
-                <!-- Disclaimer + CTA -->
-                <div style="font-size:0.72rem;color:rgba(255,255,255,0.35);margin-bottom:18px;text-align:center;">
-                    ✦ These are AI estimates — adjust traffic sliders and sources as needed after simulation starts
-                </div>
-                <button id="ctx-start-btn" onclick="startSimulation()" style="width:100%;padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-family:'Outfit',sans-serif;font-size:1rem;font-weight:800;cursor:pointer;letter-spacing:0.03em;box-shadow:0 8px 24px -8px rgba(16,185,129,0.5);transition:all 0.2s ease;display:flex;align-items:center;justify-content:center;gap:10px;">
-                    <span>▶</span> Start Simulation
-                </button>
-            </div>
-            <!-- Fallback message -->
-            <div id="ctx-fallback" style="display:none;font-size:0.88rem;color:rgba(255,255,255,0.5);text-align:center;padding:8px 0 16px;">
-                Using default parameters (AI context unavailable)
-            </div>
-        </div>
-    </div>
-
     <div id="canvas-container"></div>
-
     <div id="flash-overlay" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(239, 68, 68, 0.25); z-index: 5; display: none; pointer-events: none; opacity: 0; transition: opacity 0.5s ease;"></div>
     <div id="notification">Connecting to backend...</div>
     
@@ -599,8 +583,25 @@
 
     <!-- Bottom Controls HUD -->
     <div id="controls-panel" class="hud-panel">
-        <!-- Minimize close button -->
-        <button id="panel-close-btn" title="Minimize panel">×</button>
+        <!-- Circular Close Button -->
+        <button id="btn-minimize-close" style="
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            z-index: 15;
+        ">&times;</button>
         <!-- Wind Section -->
         <div class="panel-section wind-widget">
             <div class="section-title" style="width: 100%;">
@@ -652,30 +653,14 @@
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Building
                     </button>
                 </div>
-                
-                <div style="border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 10px;">
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">Manual Coordinates (Grid)</div>
-                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                        <input id="manual-x" type="number" placeholder="X (0-127)" min="0" max="127" style="flex: 1; padding: 6px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 6px; color: white; outline: none; font-size: 0.8rem; text-align: center;" />
-                        <input id="manual-y" type="number" placeholder="Y (0-127)" min="0" max="127" style="flex: 1; padding: 6px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 6px; color: white; outline: none; font-size: 0.8rem; text-align: center;" />
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <button id="btn-manual-factory" class="ctrl-btn" style="margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">
-                            + Factory
-                        </button>
-                        <button id="btn-manual-building" class="ctrl-btn" style="margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">
-                            + Building
-                        </button>
-                    </div>
-                </div>
             </div>
             <div style="border-top: 1px solid var(--panel-border); padding-top: 10px; margin-top: 12px;">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                     <button id="btn-demo-mode" class="ctrl-btn" style="color: var(--accent-yellow); border-color: rgba(251,191,36,0.25); margin-bottom: 0;">Demo Mode</button>
                     <button id="btn-green-corridor" class="ctrl-btn" style="color: var(--accent-green); border-color: rgba(52,211,153,0.25); margin-bottom: 0;">Green Corridor</button>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 8px;">
-                    <button id="btn-wind-shift" class="ctrl-btn" style="color: #60a5fa; border-color: rgba(96,165,250,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">💨 Wind Shift</button>
+                <div style="margin-bottom: 8px;">
+                    <button id="btn-wind-shift" class="ctrl-btn" style="color: #60a5fa; border-color: rgba(96,165,250,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem; width: 100%;">Wind Shift</button>
                 </div>
                 <!-- Volume Fog Toggle -->
                 <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; margin-top: 4px;">
@@ -691,29 +676,50 @@
         </div>
     </div>
 
-    <!-- Floating gear button to restore the control panel -->
-    <button id="panel-restore-btn" title="Restore controls">⚙</button>
+    <!-- Floating Restore Gear Button -->
+    <button id="btn-minimize-restore">⚙</button>
 
-    <!-- Building Custom Modal Overlay -->
-    <div id="building-modal">
-        <h3 style="margin: 0 0 16px 0; font-family: 'Outfit'; font-size: 1.15rem; font-weight: 700;">Extrude Building</h3>
-        <div style="margin-bottom: 12px;">
-            <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; text-transform: uppercase;">Width (meters)</label>
-            <input id="build-width" type="number" value="60" style="width: calc(100% - 18px); padding: 8px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 8px; color: white; outline: none; font-size: 0.9rem;" />
+    <!-- Floating Popups for custom building & factory placement -->
+    <div id="building-height-popup" class="floating-popup" style="display: none;">
+        <div class="popup-title">Building Height</div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <input id="building-height-slider" type="range" min="3" max="50" value="10" style="width: 100px; margin: 0;" />
+            <span id="building-height-val" style="width: 30px; text-align: right;">10m</span>
         </div>
-        <div style="margin-bottom: 12px;">
-            <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; text-transform: uppercase;">Depth (meters)</label>
-            <input id="build-depth" type="number" value="60" style="width: calc(100% - 18px); padding: 8px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 8px; color: white; outline: none; font-size: 0.9rem;" />
-        </div>
-        <div style="margin-bottom: 20px;">
-            <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; text-transform: uppercase;">Height (meters)</label>
-            <input id="build-height" type="number" value="35" style="width: calc(100% - 18px); padding: 8px; background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 8px; color: white; outline: none; font-size: 0.9rem;" />
-        </div>
-        <div style="display: flex; justify-content: flex-end; gap: 8px;">
-            <button id="modal-cancel" style="padding: 8px 16px; background: transparent; border: 1px solid var(--panel-border); border-radius: 8px; color: white; font-weight: 600; font-size: 0.8rem; cursor: pointer; transition: background 0.2s;">Cancel</button>
-            <button id="modal-submit" style="padding: 8px 16px; background: var(--accent-green); border: none; border-radius: 8px; color: #050508; font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: box-shadow 0.2s;">Place Mesh</button>
+        <div class="popup-actions" style="margin-top: 4px;">
+            <button id="building-height-delete" class="popup-btn btn-delete" style="display: none;" title="Remove Building">🗑️ Delete</button>
+            <div style="display: flex; gap: 8px; flex: 1; justify-content: flex-end;">
+                <button id="building-height-cancel" class="popup-btn btn-cancel">✗ Cancel</button>
+                <button id="building-height-submit" class="popup-btn btn-ok">✓ Place</button>
+            </div>
         </div>
     </div>
+
+    <div id="factory-emission-popup" class="floating-popup" style="display: none;">
+        <div class="popup-title">Emission Strength</div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <input id="factory-emission-slider" type="range" min="0.1" max="1.0" step="0.05" value="0.5" style="width: 100px; margin: 0;" />
+            <span id="factory-emission-val" style="width: 35px; text-align: right;">0.5</span>
+        </div>
+        <div class="popup-actions">
+            <button id="factory-emission-cancel" class="popup-btn btn-cancel">✗ Cancel</button>
+            <button id="factory-emission-submit" class="popup-btn btn-ok">✓ Place</button>
+        </div>
+    </div>
+
+    <div id="factory-select-popup" class="floating-popup" style="display: none;">
+        <div class="popup-title">Factory Settings</div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span style="font-size: 0.75rem; color: var(--text-secondary);">Strength:</span>
+            <input id="factory-select-slider" type="range" min="0.1" max="1.0" step="0.05" value="0.5" style="width: 80px; margin: 0;" />
+            <span id="factory-select-val" style="width: 35px; text-align: right;">0.5</span>
+        </div>
+        <div class="popup-actions">
+            <button id="factory-select-delete" class="popup-btn btn-delete" title="Remove Factory">🗑️ Delete</button>
+        </div>
+    </div>
+
+    <div id="dimensions-label"></div>
 
     <script>
         // --- Geographic Projection Configuration (mutable — updated on region select) ---
@@ -1159,7 +1165,33 @@
 
         // Interactive Placement States
         let placementMode = null; // 'factory' or 'building'
-        let pendingBuildingCoords = null; // cached click position for modal
+
+        // Refactored Interactive Placement & Selected States
+        let activeDragType = null; // 'building-draw', 'building-move', 'building-resize', 'factory-move', 'factory-resize'
+        let activeDragMesh = null; // The handle mesh, base ring mesh, or building/factory body mesh being dragged
+        let activeDragTarget = null; // The building or factory object being manipulated
+        let activeDragHandleIndex = -1; // 0-7 for building handles
+        let hoverBuilding = null; // The user building object currently hovered
+        
+        let userBuildings = []; // array of { id, mesh, line, x1, y1, x2, y2, height_m }
+        let userFactories = []; // array of { id, mesh, shimmerCircle, light, baseRing, gx, gy, strength, radius_m }
+        let selectedBuilding = null;
+        let selectedFactory = null;
+        
+        let ghostMesh = null;
+        let ghostLine = null;
+        let dragStartPt = null;
+        let dragOffset = new THREE.Vector3();
+        let activePulseOutlines = []; // array of { line, startTime, duration }
+        let handleMeshes = []; // 8 handle meshes for building resizing
+        
+        // Factory placement preview cylinder
+        let factoryPreviewMesh = null;
+        let factoryPreviewShimmer = null;
+        let factoryPreviewLight = null;
+        let factoryPreviewCoords = null;
+        
+        let pendingBuilding = null;
         let currentWindAngle = 270.0;
         let currentWindSpeed = 0.3;
         let windShiftInterval = null;
@@ -1382,6 +1414,45 @@
         function clearDynamicScene() {
             buildings_data.length = 0;
             allRoadFeatures = [];
+            
+            // Remove user buildings
+            userBuildings.forEach(b => {
+                scene.remove(b.mesh);
+                if (b.line) scene.remove(b.line);
+                b.mesh.geometry.dispose();
+                b.mesh.material.dispose();
+                if (b.line) {
+                    b.line.geometry.dispose();
+                    b.line.material.dispose();
+                }
+            });
+            userBuildings = [];
+            
+            // Remove user factories
+            userFactories.forEach(f => {
+                scene.remove(f.mesh);
+                if (f.shimmerCircle) scene.remove(f.shimmerCircle);
+                if (f.light) scene.remove(f.light);
+                if (f.baseRing) scene.remove(f.baseRing);
+                
+                f.mesh.geometry.dispose();
+                f.mesh.material.dispose();
+                if (f.shimmerCircle) {
+                    f.shimmerCircle.geometry.dispose();
+                    f.shimmerCircle.material.dispose();
+                }
+                if (f.baseRing) {
+                    f.baseRing.geometry.dispose();
+                    f.baseRing.material.dispose();
+                }
+            });
+            userFactories = [];
+            
+            // Deselect and clear helpers
+            deselectAll();
+            hideGhostMesh();
+            hideFactoryPreview();
+            
             const toRemove = [];
             scene.traverse(obj => { if (obj.userData && obj.userData.isDynamic) toRemove.push(obj); });
             toRemove.forEach(obj => {
@@ -1640,27 +1711,19 @@
             }, stepTime);
         };
 
-        // ── Panel Minimize / Restore ──
-        (function initPanelToggle() {
-            const panel      = document.getElementById('controls-panel');
-            const closeBtn   = document.getElementById('panel-close-btn');
-            const restoreBtn = document.getElementById('panel-restore-btn');
+        // Minimize/Restore Panel Actions
+        const ctrlPanel = document.getElementById('controls-panel');
+        const restoreBtn = document.getElementById('btn-minimize-restore');
 
-            closeBtn.onclick = () => {
-                panel.classList.add('panel-hidden');
-                // Show gear after transition completes
-                setTimeout(() => {
-                    restoreBtn.style.display = 'flex';
-                    requestAnimationFrame(() => { restoreBtn.style.opacity = '1'; });
-                }, 310);
-            };
+        document.getElementById('btn-minimize-close').onclick = () => {
+            ctrlPanel.classList.add('minimized');
+            restoreBtn.style.display = 'flex';
+        };
 
-            restoreBtn.onclick = () => {
-                restoreBtn.style.display = 'none';
-                panel.classList.remove('panel-hidden');
-            };
-        })();
-
+        restoreBtn.onclick = () => {
+            ctrlPanel.classList.remove('minimized');
+            restoreBtn.style.display = 'none';
+        };
 
         // Rush Hour Action (animate sliders to 80% and wind to West 0.6)
         document.getElementById('btn-rush-hour').onclick = () => {
@@ -1742,18 +1805,26 @@
         window.addEventListener('mousedown', (e) => {
             mouseDownPos.x = e.clientX;
             mouseDownPos.y = e.clientY;
+            onMouseDown(e);
         });
 
         window.addEventListener('mouseup', (e) => {
-            // Check if it's a drag or a click
-            const dx = Math.abs(e.clientX - mouseDownPos.x);
-            const dy = Math.abs(e.clientY - mouseDownPos.y);
-            if (dx < 5 && dy < 5) {
-                onCanvasClick(e);
+            onMouseUp(e);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            onMouseMove(e);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                cancelActivePlacement();
+                deselectAll();
             }
         });
 
         function setPlacementMode(mode) {
+            deselectAll();
             placementMode = mode;
             const hint = document.getElementById('hint-hud');
             const factoryBtn = document.getElementById('btn-add-factory');
@@ -1763,12 +1834,12 @@
             buildingBtn.classList.remove('ctrl-btn-active');
             
             if (mode === 'factory') {
-                hint.innerText = "Click on the ground grid to place a factory stack";
+                hint.innerText = "Click on the ground to place a factory stack";
                 hint.style.display = 'block';
                 factoryBtn.classList.add('ctrl-btn-active');
                 renderer.domElement.style.cursor = 'crosshair';
             } else if (mode === 'building') {
-                hint.innerText = "Click on the ground grid to place a building footprint";
+                hint.innerText = "Click and drag on the ground to draw a building footprint";
                 hint.style.display = 'block';
                 buildingBtn.classList.add('ctrl-btn-active');
                 renderer.domElement.style.cursor = 'crosshair';
@@ -1783,44 +1854,716 @@
             setTimeout(hideNotification, 3000);
         }
 
-        function getManualCoords() {
-            const xVal = document.getElementById('manual-x').value.trim();
-            const yVal = document.getElementById('manual-y').value.trim();
-            if (xVal === "" || yVal === "") {
-                flashWarning("Please enter both X and Y coordinates (0-127).");
-                return null;
-            }
-            const gx = parseInt(xVal);
-            const gy = parseInt(yVal);
-            if (isNaN(gx) || gx < 0 || gx > 127 || isNaN(gy) || gy < 0 || gy > 127) {
-                flashWarning("Coordinates must be integers between 0 and 127.");
-                return null;
-            }
-            // Convert to world coordinates (centered to map correctly via worldToGrid round math)
-            const x = -800 + gx * 12.5;
-            const z = 800 - gy * 12.5;
-            return { x, z, gx, gy };
+        function isUITarget(target) {
+            if (!target) return false;
+            return target.closest('.hud-panel') || 
+                   target.closest('.floating-popup') || 
+                   target.closest('#notification') || 
+                   target.closest('#btn-minimize-restore') ||
+                   target.closest('#leaflet-container') ||
+                   target.closest('.leaflet-control-container') ||
+                   target.closest('#btn-demo-mode');
         }
 
-        document.getElementById('btn-manual-factory').onclick = () => {
-            const coords = getManualCoords();
-            if (coords) {
-                setPlacementMode(null);
-                placeFactory(coords.x, coords.z, coords.gx, coords.gy);
-                document.getElementById('manual-x').value = '';
-                document.getElementById('manual-y').value = '';
-            }
-        };
+        function snapToGridPoint(pt) {
+            const span = radius_m * 2;
+            const gx = Math.round((pt.x - (-radius_m)) / span * 128);
+            const gy = Math.round((radius_m - pt.z) / span * 128);
+            const snapped_x = -radius_m + (gx / 128) * span;
+            const snapped_z = radius_m - (gy / 128) * span;
+            return { x: snapped_x, z: snapped_z, gx: Math.max(0, Math.min(127, gx)), gy: Math.max(0, Math.min(127, gy)) };
+        }
 
-        document.getElementById('btn-manual-building').onclick = () => {
-            const coords = getManualCoords();
-            if (coords) {
-                setPlacementMode(null);
-                showBuildingModal(coords.x, coords.z, coords.gx, coords.gy);
-                document.getElementById('manual-x').value = '';
-                document.getElementById('manual-y').value = '';
+        function getGridBounds(x1, z1, x2, z2) {
+            const span = radius_m * 2;
+            const gx1 = Math.round((x1 - (-radius_m)) / span * 128);
+            const gx2 = Math.round((x2 - (-radius_m)) / span * 128);
+            const gy_for_z1 = Math.round((radius_m - z1) / span * 128);
+            const gy_for_z2 = Math.round((radius_m - z2) / span * 128);
+            
+            const min_gx = Math.max(0, Math.min(127, Math.min(gx1, gx2)));
+            const max_gx = Math.max(0, Math.min(127, Math.max(gx1, gx2)));
+            const min_gy = Math.max(0, Math.min(127, Math.min(gy_for_z1, gy_for_z2)));
+            const max_gy = Math.max(0, Math.min(127, Math.max(gy_for_z1, gy_for_z2)));
+            
+            return {
+                x1: min_gx,
+                x2: max_gx + 1,
+                y1: min_gy,
+                y2: max_gy + 1
+            };
+        }
+
+        function initGhostMesh() {
+            if (ghostMesh) return;
+            const geom = new THREE.BoxGeometry(1, 1, 1);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15, depthWrite: false });
+            ghostMesh = new THREE.Mesh(geom, mat);
+            ghostMesh.visible = false;
+            scene.add(ghostMesh);
+            
+            const edges = new THREE.EdgesGeometry(geom);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+            ghostLine = new THREE.LineSegments(edges, lineMat);
+            ghostLine.visible = false;
+            scene.add(ghostLine);
+        }
+
+        function hideGhostMesh() {
+            if (ghostMesh) ghostMesh.visible = false;
+            if (ghostLine) ghostLine.visible = false;
+            pendingBuilding = null;
+        }
+
+        function updateGhostHeight(h) {
+            if (!ghostMesh) return;
+            ghostMesh.position.y = h / 2;
+            ghostMesh.scale.y = h;
+            ghostLine.position.y = h / 2;
+            ghostLine.scale.y = h;
+        }
+
+        function createUserBuilding(id, x1, z1, x2, z2, height_m) {
+            const w = x2 - x1;
+            const d = z2 - z1;
+            const cx = (x1 + x2) / 2;
+            const cz = (z1 + z2) / 2;
+            
+            const geom = new THREE.BoxGeometry(1, 1, 1);
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0x3a3a5a,
+                roughness: 0.7,
+                metalness: 0.1
+            });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.set(cx, height_m / 2, cz);
+            mesh.scale.set(w, height_m, d);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData = { id, isUserBuilding: true };
+            scene.add(mesh);
+            
+            const edges = new THREE.EdgesGeometry(geom);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x475569 });
+            const line = new THREE.LineSegments(edges, lineMat);
+            line.position.copy(mesh.position);
+            line.scale.copy(mesh.scale);
+            scene.add(line);
+            
+            const bObj = { id, mesh, line, x1, z1, x2, z2, height_m };
+            userBuildings.push(bObj);
+            return bObj;
+        }
+
+        function updateSelectedBuildingHeight(h) {
+            if (!selectedBuilding) return;
+            selectedBuilding.height_m = h;
+            selectedBuilding.mesh.position.y = h / 2;
+            selectedBuilding.mesh.scale.y = h;
+            selectedBuilding.line.position.y = h / 2;
+            selectedBuilding.line.scale.y = h;
+            updateBuildingHandles(selectedBuilding);
+        }
+
+        function removeUserBuilding(bObj) {
+            scene.remove(bObj.mesh);
+            scene.remove(bObj.line);
+            bObj.mesh.geometry.dispose();
+            bObj.mesh.material.dispose();
+            bObj.line.geometry.dispose();
+            bObj.line.material.dispose();
+            
+            const idx = userBuildings.indexOf(bObj);
+            if (idx > -1) userBuildings.splice(idx, 1);
+            
+            fetch('http://localhost:8000/remove_building', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: bObj.id })
+            }).catch(err => console.error("Failed to remove building:", err));
+
+            deselectAll();
+        }
+
+        function showBuildingHandles(b) {
+            clearBuildingHandles();
+            const geom = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false });
+            
+            for (let i = 0; i < 8; i++) {
+                const handle = new THREE.Mesh(geom, mat);
+                handle.renderOrder = 999;
+                handle.userData = { index: i, isHandle: true };
+                scene.add(handle);
+                handleMeshes.push(handle);
             }
-        };
+            updateBuildingHandles(b);
+        }
+
+        function updateBuildingHandles(b) {
+            if (handleMeshes.length !== 8) return;
+            const x1 = b.x1;
+            const z1 = b.z1;
+            const x2 = b.x2;
+            const z2 = b.z2;
+            const x_mid = (x1 + x2) / 2;
+            const z_mid = (z1 + z2) / 2;
+            const y = 0.5;
+            
+            handleMeshes[0].position.set(x1, y, z1);
+            handleMeshes[1].position.set(x2, y, z1);
+            handleMeshes[2].position.set(x2, y, z2);
+            handleMeshes[3].position.set(x1, y, z2);
+            handleMeshes[4].position.set(x1, y, z_mid);
+            handleMeshes[5].position.set(x2, y, z_mid);
+            handleMeshes[6].position.set(x_mid, y, z1);
+            handleMeshes[7].position.set(x_mid, y, z2);
+        }
+
+        function clearBuildingHandles() {
+            handleMeshes.forEach(h => {
+                scene.remove(h);
+                h.geometry.dispose();
+                h.material.dispose();
+            });
+            handleMeshes = [];
+        }
+
+        function showFactoryRing(f) {
+            clearFactoryRing(f);
+            const geom = new THREE.RingGeometry(f.radius_m - 1.5, f.radius_m + 1.5, 32);
+            geom.rotateX(-Math.PI / 2);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+            const ringMesh = new THREE.Mesh(geom, mat);
+            ringMesh.position.copy(f.mesh.position);
+            ringMesh.position.y = 0.08;
+            ringMesh.userData = { isFactoryRing: true };
+            scene.add(ringMesh);
+            f.baseRing = ringMesh;
+        }
+
+        function clearFactoryRing(f) {
+            if (f.baseRing) {
+                scene.remove(f.baseRing);
+                f.baseRing.geometry.dispose();
+                f.baseRing.material.dispose();
+                f.baseRing = null;
+            }
+        }
+
+        function createFactoryMesh(x, z, r_m, strength, id) {
+            const height = 8;
+            const geom = new THREE.CylinderGeometry(r_m, r_m, height, 32);
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: 0x3a2a1a,
+                roughness: 0.4,
+                metalness: 0.7,
+                emissive: 0xff3300,
+                emissiveIntensity: 0.15
+            });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.set(x, height / 2, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData = { id, isUserFactory: true };
+            scene.add(mesh);
+            
+            const topGeom = new THREE.CircleGeometry(r_m, 32);
+            topGeom.rotateX(-Math.PI / 2);
+            const topMat = new THREE.MeshBasicMaterial({
+                color: 0xff7700,
+                transparent: true,
+                opacity: 0.7,
+                side: THREE.DoubleSide
+            });
+            const shimmer = new THREE.Mesh(topGeom, topMat);
+            shimmer.position.set(x, height + 0.05, z);
+            scene.add(shimmer);
+            
+            const light = new THREE.PointLight(0xff5500, 1.5, 100);
+            light.position.set(x, height + 1.0, z);
+            scene.add(light);
+            
+            return { mesh, shimmer, light };
+        }
+
+        function showFactoryPreview(x, z) {
+            hideFactoryPreview();
+            const height = 8;
+            const r_m = 37.5;
+            const geom = new THREE.CylinderGeometry(r_m, r_m, height, 32);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff5500, transparent: true, opacity: 0.4 });
+            factoryPreviewMesh = new THREE.Mesh(geom, mat);
+            factoryPreviewMesh.position.set(x, height / 2, z);
+            scene.add(factoryPreviewMesh);
+            
+            const topGeom = new THREE.CircleGeometry(r_m, 32);
+            topGeom.rotateX(-Math.PI / 2);
+            const topMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.6 });
+            factoryPreviewShimmer = new THREE.Mesh(topGeom, topMat);
+            factoryPreviewShimmer.position.set(x, height + 0.05, z);
+            scene.add(factoryPreviewShimmer);
+        }
+
+        function hideFactoryPreview() {
+            if (factoryPreviewMesh) {
+                scene.remove(factoryPreviewMesh);
+                factoryPreviewMesh.geometry.dispose();
+                factoryPreviewMesh.material.dispose();
+                factoryPreviewMesh = null;
+            }
+            if (factoryPreviewShimmer) {
+                scene.remove(factoryPreviewShimmer);
+                factoryPreviewShimmer.geometry.dispose();
+                factoryPreviewShimmer.material.dispose();
+                factoryPreviewShimmer = null;
+            }
+            factoryPreviewCoords = null;
+        }
+
+        function selectBuilding(b) {
+            deselectAll();
+            selectedBuilding = b;
+            b.line.material.color.setHex(0xffffff);
+            showBuildingHandles(b);
+            
+            const popup = document.getElementById('building-height-popup');
+            popup.style.display = 'block';
+            document.getElementById('building-height-delete').style.display = 'block';
+            document.getElementById('building-height-cancel').innerText = '✗ Close';
+            document.getElementById('building-height-submit').innerText = '✓ Apply';
+            document.getElementById('building-height-slider').value = b.height_m;
+            document.getElementById('building-height-val').innerText = b.height_m + 'm';
+        }
+
+        function selectFactory(f) {
+            deselectAll();
+            selectedFactory = f;
+            showFactoryRing(f);
+            
+            const popup = document.getElementById('factory-select-popup');
+            popup.style.display = 'block';
+            document.getElementById('factory-select-slider').value = f.strength;
+            document.getElementById('factory-select-val').innerText = f.strength;
+        }
+
+        function deselectAll() {
+            if (selectedBuilding) {
+                selectedBuilding.line.material.color.setHex(0x475569);
+                selectedBuilding = null;
+            }
+            if (selectedFactory) {
+                clearFactoryRing(selectedFactory);
+                selectedFactory = null;
+            }
+            clearBuildingHandles();
+            
+            document.getElementById('building-height-popup').style.display = 'none';
+            document.getElementById('factory-emission-popup').style.display = 'none';
+            document.getElementById('factory-select-popup').style.display = 'none';
+            document.getElementById('dimensions-label').style.display = 'none';
+        }
+
+        function cancelActivePlacement() {
+            hideGhostMesh();
+            hideFactoryPreview();
+            document.getElementById('building-height-popup').style.display = 'none';
+            document.getElementById('factory-emission-popup').style.display = 'none';
+            setPlacementMode(null);
+        }
+
+        function updatePopupPosition(popupEl, worldPoint) {
+            if (!popupEl || popupEl.style.display === 'none') return;
+            const tempV = new THREE.Vector3().copy(worldPoint);
+            tempV.project(camera);
+            const x = (tempV.x * .5 + .5) * window.innerWidth;
+            const y = (tempV.y * -.5 + .5) * window.innerHeight;
+            popupEl.style.left = `${x}px`;
+            popupEl.style.top = `${y}px`;
+        }
+
+        function onMouseDown(e) {
+            if (isUITarget(e.target)) return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            if (placementMode === 'building') {
+                const intersects = raycaster.intersectObject(ground);
+                if (intersects.length > 0) {
+                    activeDragType = 'building-draw';
+                    dragStartPt = intersects[0].point.clone();
+                    initGhostMesh();
+                    controls.enabled = false;
+                }
+                return;
+            }
+
+            if (!placementMode) {
+                if (selectedBuilding && handleMeshes.length === 8) {
+                    const intersectsHandles = raycaster.intersectObjects(handleMeshes);
+                    if (intersectsHandles.length > 0) {
+                        activeDragType = 'building-resize';
+                        activeDragMesh = intersectsHandles[0].object;
+                        activeDragHandleIndex = activeDragMesh.userData.index;
+                        activeDragTarget = selectedBuilding;
+                        controls.enabled = false;
+                        document.getElementById('dimensions-label').style.display = 'block';
+                        return;
+                    }
+                }
+
+                if (selectedFactory && selectedFactory.baseRing) {
+                    const intersectsRing = raycaster.intersectObject(selectedFactory.baseRing);
+                    if (intersectsRing.length > 0) {
+                        activeDragType = 'factory-resize';
+                        activeDragTarget = selectedFactory;
+                        controls.enabled = false;
+                        return;
+                    }
+                }
+
+                const factoryMeshList = userFactories.map(f => f.mesh);
+                const intersectsFactories = raycaster.intersectObjects(factoryMeshList);
+                if (intersectsFactories.length > 0) {
+                    const hitMesh = intersectsFactories[0].object;
+                    const fObj = userFactories.find(f => f.mesh === hitMesh);
+                    if (fObj) {
+                        selectFactory(fObj);
+                        activeDragType = 'factory-move';
+                        activeDragTarget = fObj;
+                        const intersectsGround = raycaster.intersectObject(ground);
+                        if (intersectsGround.length > 0) {
+                            dragOffset.copy(fObj.mesh.position).sub(intersectsGround[0].point);
+                            dragOffset.y = 0;
+                        }
+                        controls.enabled = false;
+                        return;
+                    }
+                }
+
+                const buildingMeshList = userBuildings.map(b => b.mesh);
+                const intersectsBuildings = raycaster.intersectObjects(buildingMeshList);
+                if (intersectsBuildings.length > 0) {
+                    const hitMesh = intersectsBuildings[0].object;
+                    const bObj = userBuildings.find(b => b.mesh === hitMesh);
+                    if (bObj) {
+                        selectBuilding(bObj);
+                        activeDragType = 'building-move';
+                        activeDragTarget = bObj;
+                        const intersectsGround = raycaster.intersectObject(ground);
+                        if (intersectsGround.length > 0) {
+                            dragOffset.copy(bObj.mesh.position).sub(intersectsGround[0].point);
+                            dragOffset.y = 0;
+                        }
+                        controls.enabled = false;
+                        return;
+                    }
+                }
+            }
+        }
+
+        function onMouseMove(e) {
+            if (!activeDragType && !placementMode) {
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                raycaster.setFromCamera(mouse, camera);
+
+                const buildingMeshList = userBuildings.map(b => b.mesh);
+                const intersectsBuildings = raycaster.intersectObjects(buildingMeshList);
+                if (intersectsBuildings.length > 0) {
+                    const hitMesh = intersectsBuildings[0].object;
+                    const bObj = userBuildings.find(b => b.mesh === hitMesh);
+                    if (bObj !== hoverBuilding) {
+                        if (hoverBuilding) hoverBuilding.line.material.color.setHex(0x475569);
+                        hoverBuilding = bObj;
+                        hoverBuilding.line.material.color.setHex(0xffffff);
+                    }
+                } else {
+                    if (hoverBuilding) {
+                        hoverBuilding.line.material.color.setHex(0x475569);
+                        hoverBuilding = null;
+                    }
+                }
+                
+                if (selectedFactory && selectedFactory.baseRing) {
+                    const intersectsRing = raycaster.intersectObject(selectedFactory.baseRing);
+                    if (intersectsRing.length > 0) {
+                        selectedFactory.baseRing.material.opacity = 0.85;
+                        renderer.domElement.style.cursor = 'pointer';
+                    } else {
+                        selectedFactory.baseRing.material.opacity = 0.5;
+                        renderer.domElement.style.cursor = 'auto';
+                    }
+                }
+                return;
+            }
+
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            if (activeDragType === 'building-draw') {
+                const intersects = raycaster.intersectObject(ground);
+                if (intersects.length > 0) {
+                    const start = snapToGridPoint(dragStartPt);
+                    const end = snapToGridPoint(intersects[0].point);
+                    
+                    const x1 = Math.min(start.x, end.x);
+                    const x2 = Math.max(start.x, end.x);
+                    const z1 = Math.min(start.z, end.z);
+                    const z2 = Math.max(start.z, end.z);
+                    
+                    const w = Math.max(12.5, x2 - x1);
+                    const d = Math.max(12.5, z2 - z1);
+                    const cx = (x1 + x2) / 2;
+                    const cz = (z1 + z2) / 2;
+                    const h = parseFloat(document.getElementById('building-height-slider').value);
+                    
+                    ghostMesh.position.set(cx, h / 2, cz);
+                    ghostMesh.scale.set(w, h, d);
+                    ghostMesh.visible = true;
+                    
+                    ghostLine.position.set(cx, h / 2, cz);
+                    ghostLine.scale.set(w, h, d);
+                    ghostLine.visible = true;
+                }
+            }
+            else if (activeDragType === 'building-resize') {
+                const intersects = raycaster.intersectObject(ground);
+                if (intersects.length > 0) {
+                    const pt = snapToGridPoint(intersects[0].point);
+                    const b = activeDragTarget;
+                    
+                    if (activeDragHandleIndex === 0) {
+                        b.x1 = Math.min(pt.x, b.x2 - 12.5);
+                        b.z1 = Math.min(pt.z, b.z2 - 12.5);
+                    } else if (activeDragHandleIndex === 1) {
+                        b.x2 = Math.max(pt.x, b.x1 + 12.5);
+                        b.z1 = Math.min(pt.z, b.z2 - 12.5);
+                    } else if (activeDragHandleIndex === 2) {
+                        b.x2 = Math.max(pt.x, b.x1 + 12.5);
+                        b.z2 = Math.max(pt.z, b.z1 + 12.5);
+                    } else if (activeDragHandleIndex === 3) {
+                        b.x1 = Math.min(pt.x, b.x2 - 12.5);
+                        b.z2 = Math.max(pt.z, b.z1 + 12.5);
+                    } else if (activeDragHandleIndex === 4) {
+                        b.x1 = Math.min(pt.x, b.x2 - 12.5);
+                    } else if (activeDragHandleIndex === 5) {
+                        b.x2 = Math.max(pt.x, b.x1 + 12.5);
+                    } else if (activeDragHandleIndex === 6) {
+                        b.z1 = Math.min(pt.z, b.z2 - 12.5);
+                    } else if (activeDragHandleIndex === 7) {
+                        b.z2 = Math.max(pt.z, b.z1 + 12.5);
+                    }
+                    
+                    const w = b.x2 - b.x1;
+                    const d = b.z2 - b.z1;
+                    const cx = (b.x1 + b.x2) / 2;
+                    const cz = (b.z1 + b.z2) / 2;
+                    
+                    b.mesh.position.set(cx, b.height_m / 2, cz);
+                    b.mesh.scale.set(w, b.height_m, d);
+                    b.line.position.copy(b.mesh.position);
+                    b.line.scale.copy(b.mesh.scale);
+                    
+                    updateBuildingHandles(b);
+                    
+                    const label = document.getElementById('dimensions-label');
+                    label.innerText = `${w}m × ${d}m × ${b.height_m}m tall`;
+                    updatePopupPosition(label, b.mesh.position.clone().setY(b.height_m));
+                }
+            }
+            else if (activeDragType === 'building-move') {
+                const intersects = raycaster.intersectObject(ground);
+                if (intersects.length > 0) {
+                    const newPos = intersects[0].point.clone().add(dragOffset);
+                    const b = activeDragTarget;
+                    
+                    const dx = newPos.x - b.mesh.position.x;
+                    const dz = newPos.z - b.mesh.position.z;
+                    const gx_shift = Math.round(dx / 12.5);
+                    const gy_shift = Math.round(-dz / 12.5);
+                    
+                    if (gx_shift !== 0 || gy_shift !== 0) {
+                        const shift_x = gx_shift * 12.5;
+                        const shift_z = -gy_shift * 12.5;
+                        
+                        b.x1 += shift_x;
+                        b.x2 += shift_x;
+                        b.z1 += shift_z;
+                        b.z2 += shift_z;
+                        
+                        const cx = (b.x1 + b.x2) / 2;
+                        const cz = (b.z1 + b.z2) / 2;
+                        
+                        b.mesh.position.set(cx, b.height_m / 2, cz);
+                        b.line.position.copy(b.mesh.position);
+                        
+                        dragOffset.copy(b.mesh.position).sub(intersects[0].point);
+                        dragOffset.y = 0;
+                        
+                        updateBuildingHandles(b);
+                    }
+                }
+            }
+            else if (activeDragType === 'factory-resize') {
+                const intersects = raycaster.intersectObject(ground);
+                if (intersects.length > 0) {
+                    const f = activeDragTarget;
+                    const dist = intersects[0].point.distanceTo(f.mesh.position);
+                    const cells = Math.max(1, Math.round(dist / 12.5));
+                    const new_r = cells * 12.5;
+                    
+                    f.radius_m = new_r;
+                    f.mesh.scale.set(new_r / 37.5, 1, new_r / 37.5);
+                    f.shimmerCircle.scale.set(new_r / 37.5, new_r / 37.5, 1);
+                    f.baseRing.scale.set(new_r / 37.5, new_r / 37.5, 1);
+                }
+            }
+            else if (activeDragType === 'factory-move') {
+                const intersects = raycaster.intersectObject(ground);
+                if (intersects.length > 0) {
+                    const newPos = intersects[0].point.clone().add(dragOffset);
+                    const f = activeDragTarget;
+                    
+                    const grid = worldToGrid(newPos.x, newPos.z);
+                    const snapped_x = -radius_m + (grid.gx + 0.5) * (radius_m * 2 / 128);
+                    const snapped_z = radius_m - (grid.gy + 0.5) * (radius_m * 2 / 128);
+                    
+                    f.gx = grid.gx;
+                    f.gy = grid.gy;
+                    
+                    f.mesh.position.set(snapped_x, 4, snapped_z);
+                    f.shimmerCircle.position.set(snapped_x, 8.05, snapped_z);
+                    f.light.position.set(snapped_x, 8.5, snapped_z);
+                    if (f.baseRing) f.baseRing.position.copy(f.mesh.position);
+                    
+                    dragOffset.copy(f.mesh.position).sub(intersects[0].point);
+                    dragOffset.y = 0;
+                }
+            }
+        }
+
+        function onMouseUp(e) {
+            controls.enabled = true;
+            
+            if (activeDragType === 'building-draw') {
+                const w = ghostMesh.scale.x;
+                const d = ghostMesh.scale.z;
+                
+                if (w >= 12.5 && d >= 12.5) {
+                    const cx = ghostMesh.position.x;
+                    const cz = ghostMesh.position.z;
+                    
+                    pendingBuilding = {
+                        x1: cx - w / 2,
+                        z1: cz - d / 2,
+                        x2: cx + w / 2,
+                        z2: cz + d / 2
+                    };
+                    
+                    const popup = document.getElementById('building-height-popup');
+                    popup.style.display = 'block';
+                    document.getElementById('building-height-delete').style.display = 'none';
+                    document.getElementById('building-height-cancel').innerText = '✗ Cancel';
+                    document.getElementById('building-height-submit').innerText = '✓ Place';
+                    document.getElementById('building-height-slider').value = 10;
+                    document.getElementById('building-height-val').innerText = '10m';
+                    updateGhostHeight(10);
+                } else {
+                    hideGhostMesh();
+                    setPlacementMode(null);
+                }
+                activeDragType = null;
+            }
+            else if (activeDragType === 'building-resize' || activeDragType === 'building-move') {
+                const b = activeDragTarget;
+                const gb = getGridBounds(b.x1, b.z1, b.x2, b.z2);
+                
+                fetch('http://localhost:8000/update_building', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: b.id,
+                        x1: gb.x1,
+                        y1: gb.y1,
+                        x2: gb.x2,
+                        y2: gb.y2,
+                        height_m: b.height_m
+                    })
+                }).catch(err => console.error("Failed to update building:", err));
+                
+                document.getElementById('dimensions-label').style.display = 'none';
+                activeDragType = null;
+                selectBuilding(b);
+            }
+            else if (activeDragType === 'factory-resize' || activeDragType === 'factory-move') {
+                const f = activeDragTarget;
+                
+                fetch('http://localhost:8000/update_source', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: f.id,
+                        x: f.gx,
+                        y: f.gy,
+                        strength: f.strength
+                    })
+                }).catch(err => console.error("Failed to update factory:", err));
+                
+                activeDragType = null;
+                selectFactory(f);
+            }
+            else if (placementMode === 'factory') {
+                const dx = Math.abs(e.clientX - mouseDownPos.x);
+                const dy = Math.abs(e.clientY - mouseDownPos.y);
+                if (dx < 5 && dy < 5) {
+                    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                    raycaster.setFromCamera(mouse, camera);
+                    
+                    const intersects = raycaster.intersectObject(ground);
+                    if (intersects.length > 0) {
+                        const pt = intersects[0].point;
+                        const grid = worldToGrid(pt.x, pt.z);
+                        
+                        const snapped_x = -radius_m + (grid.gx + 0.5) * (radius_m * 2 / 128);
+                        const snapped_z = radius_m - (grid.gy + 0.5) * (radius_m * 2 / 128);
+                        
+                        factoryPreviewCoords = { x: snapped_x, z: snapped_z, gx: grid.gx, gy: grid.gy };
+                        showFactoryPreview(snapped_x, snapped_z);
+                        
+                        const popup = document.getElementById('factory-emission-popup');
+                        popup.style.display = 'block';
+                        document.getElementById('factory-emission-slider').value = 0.5;
+                        document.getElementById('factory-emission-val').innerText = '0.5';
+                        
+                        setPlacementMode(null);
+                    }
+                }
+            }
+            else {
+                const dx = Math.abs(e.clientX - mouseDownPos.x);
+                const dy = Math.abs(e.clientY - mouseDownPos.y);
+                if (dx < 5 && dy < 5) {
+                    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                    raycaster.setFromCamera(mouse, camera);
+                    
+                    let hitMesh = false;
+                    const intersectsBuilding = raycaster.intersectObjects(userBuildings.map(b => b.mesh));
+                    if (intersectsBuilding.length > 0) hitMesh = true;
+                    
+                    const intersectsFactory = raycaster.intersectObjects(userFactories.map(f => f.mesh));
+                    if (intersectsFactory.length > 0) hitMesh = true;
+                    
+                    if (!hitMesh && !isUITarget(e.target)) {
+                        deselectAll();
+                    }
+                }
+            }
+        }
 
         document.getElementById('btn-add-factory').onclick = () => {
             if (placementMode === 'factory') setPlacementMode(null);
@@ -1832,181 +2575,231 @@
             else setPlacementMode('building');
         };
 
-        function onCanvasClick(e) {
-            // Ignore clicks targeting HUD panels, modals, or notifications
-            if (e.target.closest('.hud-panel') || e.target.closest('#building-modal') || e.target.closest('#notification')) {
-                return;
+        // Event listeners for popup elements
+        document.getElementById('building-height-slider').oninput = (e) => {
+            const h = parseFloat(e.target.value);
+            document.getElementById('building-height-val').innerText = h + 'm';
+            if (activeDragType === 'building-draw' || pendingBuilding) {
+                updateGhostHeight(h);
+            } else if (selectedBuilding) {
+                updateSelectedBuildingHeight(h);
             }
-
-            // Map mouse to device normalized coordinates
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-
-            // Handle factory removal (click cylinder in normal mode)
-            if (!placementMode) {
-                const intersectsFactories = raycaster.intersectObjects(factoryMeshes);
-                if (intersectsFactories.length > 0) {
-                    removeFactory(intersectsFactories[0].object);
-                    return;
-                }
-            }
-
-            // Handle placements on the ground plane
-            if (placementMode) {
-                const intersects = raycaster.intersectObject(ground);
-                if (intersects.length > 0) {
-                    const pt = intersects[0].point;
-                    const grid = worldToGrid(pt.x, pt.z);
-                    
-                    if (placementMode === 'factory') {
-                        placeFactory(pt.x, pt.z, grid.gx, grid.gy);
-                        setPlacementMode(null);
-                    } else if (placementMode === 'building') {
-                        showBuildingModal(pt.x, pt.z, grid.gx, grid.gy);
-                    }
-                }
-            }
-        }
-
-        // Factory cylinder placement helpers
-        function placeFactory(x, z, gx, gy) {
-            const strength = 3.0; // stack emission intensity
-            
-            const geom = new THREE.CylinderGeometry(8, 8, 30, 16);
-            const mat = new THREE.MeshStandardMaterial({ 
-                color: 0xff5500, 
-                emissive: 0xff3300,
-                emissiveIntensity: 0.65,
-                roughness: 0.3
-            });
-            const cylinder = new THREE.Mesh(geom, mat);
-            cylinder.position.set(x, 15, z); // stand upright (half-height offset)
-            cylinder.castShadow = true;
-            cylinder.receiveShadow = true;
-            cylinder.userData = { gx, gy };
-            scene.add(cylinder);
-            factoryMeshes.push(cylinder);
-
-            // Glowing point light on top of the stack
-            const light = new THREE.PointLight(0xff4400, 1.8, 120);
-            light.position.set(x, 30, z);
-            scene.add(light);
-            cylinder.userData.light = light;
-
-            // Send to backend
-            fetch('http://localhost:8000/add_source', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ x: gx, y: gy, strength: strength })
-            }).catch(err => console.error("Failed to add factory:", err));
-        }
-
-        function removeFactory(mesh) {
-            scene.remove(mesh);
-            if (mesh.userData.light) scene.remove(mesh.userData.light);
-            
-            const idx = factoryMeshes.indexOf(mesh);
-            if (idx > -1) factoryMeshes.splice(idx, 1);
-
-            fetch('http://localhost:8000/remove_source', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ x: mesh.userData.gx, y: mesh.userData.gy })
-            }).catch(err => console.error("Failed to remove factory:", err));
-
-            mesh.geometry.dispose();
-            mesh.material.dispose();
-        }
-
-        // Custom building placement modal triggers
-        const modal = document.getElementById('building-modal');
-        
-        function showBuildingModal(x, z, gx, gy) {
-            pendingBuildingCoords = { x, z, gx, gy };
-            modal.style.display = 'block';
-        }
-
-        document.getElementById('modal-cancel').onclick = closeModal;
-        
-        function closeModal() {
-            modal.style.display = 'none';
-            pendingBuildingCoords = null;
-            setPlacementMode(null);
-        }
-
-        document.getElementById('modal-submit').onclick = () => {
-            const w = parseFloat(document.getElementById('build-width').value);
-            const d = parseFloat(document.getElementById('build-depth').value);
-            const h = parseFloat(document.getElementById('build-height').value);
-            
-            if (pendingBuildingCoords) {
-                placeBuilding(
-                    pendingBuildingCoords.x, 
-                    pendingBuildingCoords.z, 
-                    pendingBuildingCoords.gx, 
-                    pendingBuildingCoords.gy, 
-                    w, d, h
-                );
-            }
-            closeModal();
         };
 
-        function placeBuilding(x, z, gx, gy, w_m, d_m, h_m) {
-            // Convert dimensions in meters to grid cells (12.5m per cell)
-            const w_grid = Math.max(1, Math.round(w_m / 12.5));
-            const h_grid = Math.max(1, Math.round(d_m / 12.5));
+        document.getElementById('building-height-cancel').onclick = () => {
+            if (selectedBuilding) {
+                deselectAll();
+            } else {
+                cancelActivePlacement();
+            }
+        };
 
-            // Create shape in Three.js (centered on click point)
-            const shape = new THREE.Shape();
-            const hw = w_m / 2;
-            const hd = d_m / 2;
+        document.getElementById('building-height-submit').onclick = () => {
+            if (selectedBuilding) {
+                const h = parseFloat(document.getElementById('building-height-slider').value);
+                updateSelectedBuildingHeight(h);
+                const gb = getGridBounds(selectedBuilding.x1, selectedBuilding.z1, selectedBuilding.x2, selectedBuilding.z2);
+                fetch('http://localhost:8000/update_building', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: selectedBuilding.id,
+                        x1: gb.x1,
+                        y1: gb.y1,
+                        x2: gb.x2,
+                        y2: gb.y2,
+                        height_m: h
+                    })
+                }).catch(err => console.error("Failed to update building:", err));
+                deselectAll();
+            } else if (pendingBuilding) {
+                const h = parseFloat(document.getElementById('building-height-slider').value);
+                const id = 'b_' + Date.now();
+                const bObj = createUserBuilding(id, pendingBuilding.x1, pendingBuilding.z1, pendingBuilding.x2, pendingBuilding.z2, h);
+                
+                const edges = new THREE.EdgesGeometry(bObj.mesh.geometry);
+                const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1.0 });
+                const pulseLine = new THREE.LineSegments(edges, lineMat);
+                pulseLine.position.copy(bObj.mesh.position);
+                pulseLine.scale.copy(bObj.mesh.scale);
+                scene.add(pulseLine);
+                activePulseOutlines.push({
+                    line: pulseLine,
+                    startTime: Date.now(),
+                    duration: 2000
+                });
+                
+                const gb = getGridBounds(pendingBuilding.x1, pendingBuilding.z1, pendingBuilding.x2, pendingBuilding.z2);
+                fetch('http://localhost:8000/add_building', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: id,
+                        x1: gb.x1,
+                        y1: gb.y1,
+                        x2: gb.x2,
+                        y2: gb.y2,
+                        height_m: h
+                    })
+                }).catch(err => console.error("Failed to add building:", err));
+                
+                cancelActivePlacement();
+            }
+        };
+
+        document.getElementById('building-height-delete').onclick = () => {
+            if (selectedBuilding) {
+                removeUserBuilding(selectedBuilding);
+            }
+        };
+
+        document.getElementById('factory-emission-slider').oninput = (e) => {
+            document.getElementById('factory-emission-val').innerText = e.target.value;
+        };
+
+        document.getElementById('factory-emission-cancel').onclick = () => {
+            hideFactoryPreview();
+            document.getElementById('factory-emission-popup').style.display = 'none';
+        };
+
+        document.getElementById('factory-emission-submit').onclick = () => {
+            const strength = parseFloat(document.getElementById('factory-emission-slider').value);
+            if (factoryPreviewCoords) {
+                const id = 'f_' + Date.now();
+                const preview = createFactoryMesh(factoryPreviewCoords.x, factoryPreviewCoords.z, 37.5, strength, id);
+                
+                const fObj = {
+                    id: id,
+                    mesh: preview.mesh,
+                    shimmerCircle: preview.shimmer,
+                    light: preview.light,
+                    gx: factoryPreviewCoords.gx,
+                    gy: factoryPreviewCoords.gy,
+                    strength: strength,
+                    radius_m: 37.5
+                };
+                userFactories.push(fObj);
+                
+                fetch('http://localhost:8000/add_source', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: id,
+                        x: factoryPreviewCoords.gx,
+                        y: factoryPreviewCoords.gy,
+                        strength: strength
+                    })
+                }).catch(err => console.error("Failed to add factory:", err));
+            }
+            hideFactoryPreview();
+            document.getElementById('factory-emission-popup').style.display = 'none';
+        };
+
+        document.getElementById('factory-select-slider').oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById('factory-select-val').innerText = val;
+            if (selectedFactory) {
+                selectedFactory.strength = val;
+                fetch('http://localhost:8000/update_source', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: selectedFactory.id,
+                        x: selectedFactory.gx,
+                        y: selectedFactory.gy,
+                        strength: val
+                    })
+                }).catch(err => console.error("Failed to update factory strength:", err));
+            }
+        };
+
+        document.getElementById('factory-select-delete').onclick = () => {
+            if (selectedFactory) {
+                const f = selectedFactory;
+                scene.remove(f.mesh);
+                if (f.shimmerCircle) scene.remove(f.shimmerCircle);
+                if (f.light) scene.remove(f.light);
+                if (f.baseRing) scene.remove(f.baseRing);
+                
+                f.mesh.geometry.dispose();
+                f.mesh.material.dispose();
+                if (f.shimmerCircle) {
+                    f.shimmerCircle.geometry.dispose();
+                    f.shimmerCircle.material.dispose();
+                }
+                if (f.baseRing) {
+                    f.baseRing.geometry.dispose();
+                    f.baseRing.material.dispose();
+                }
+                
+                const idx = userFactories.indexOf(f);
+                if (idx > -1) userFactories.splice(idx, 1);
+                
+                fetch('http://localhost:8000/remove_source', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: f.id })
+                }).catch(err => console.error("Failed to remove factory:", err));
+                
+                deselectAll();
+            }
+        };
+
+        function updatePlacementAndInteractionFrame() {
+            const time = Date.now() * 0.005;
+            const shimmerVal = 0.5 + 0.3 * Math.sin(time);
             
-            // Positive Y coords map to negative Z in Three.js world space after rotation
-            shape.moveTo(x - hw, z - hd);
-            shape.lineTo(x + hw, z - hd);
-            shape.lineTo(x + hw, z + hd);
-            shape.lineTo(x - hw, z + hd);
-            shape.closePath();
-
-            const extrudeSettings = { depth: h_m, bevelEnabled: false };
-            const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-            const mat = new THREE.MeshLambertMaterial({ color: 0x1e1e2d, roughness: 0.7 });
-            const mesh = new THREE.Mesh(geom, mat);
-            mesh.rotation.x = -Math.PI / 2;
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            scene.add(mesh);
-
-            // Edges outline
-            const edges = new THREE.EdgesGeometry(geom);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x475569 });
-            const line = new THREE.LineSegments(edges, lineMat);
-            line.rotation.x = -Math.PI / 2;
-            scene.add(line);
-
-            // Add centroid reference to local list
-            buildings_data.push({
-                centroid: { x: x, z: z },
-                height: h_m
+            userFactories.forEach(f => {
+                if (f.shimmerCircle) {
+                    f.shimmerCircle.material.opacity = shimmerVal;
+                }
             });
-
-            // Calculate start coordinates for the backend grid matrix
-            const gx_start = Math.max(0, Math.round(gx - w_grid / 2));
-            const gy_start = Math.max(0, Math.round(gy - h_grid / 2));
-
-            // Send POST request
-            fetch('http://localhost:8000/add_building', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    x: gx_start,
-                    y: gy_start,
-                    w: w_grid,
-                    h: h_grid,
-                    height_m: h_m
-                })
-            }).catch(err => console.error("Failed to add building:", err));
+            
+            if (factoryPreviewShimmer) {
+                factoryPreviewShimmer.material.opacity = shimmerVal;
+            }
+            
+            const now = Date.now();
+            for (let i = activePulseOutlines.length - 1; i >= 0; i--) {
+                const p = activePulseOutlines[i];
+                const elapsed = now - p.startTime;
+                if (elapsed >= p.duration) {
+                    scene.remove(p.line);
+                    p.line.geometry.dispose();
+                    p.line.material.dispose();
+                    activePulseOutlines.splice(i, 1);
+                } else {
+                    const progress = elapsed / p.duration;
+                    const pulse = 0.4 + 0.4 * Math.sin(elapsed * 0.01);
+                    p.line.material.opacity = (1.0 - progress) * pulse;
+                }
+            }
+            
+            if (pendingBuilding) {
+                const popup = document.getElementById('building-height-popup');
+                if (ghostMesh && ghostMesh.visible) {
+                    const worldPt = ghostMesh.position.clone().setY(ghostMesh.scale.y);
+                    updatePopupPosition(popup, worldPt);
+                }
+            } else if (selectedBuilding) {
+                const popup = document.getElementById('building-height-popup');
+                if (selectedBuilding.mesh) {
+                    const worldPt = selectedBuilding.mesh.position.clone().setY(selectedBuilding.height_m);
+                    updatePopupPosition(popup, worldPt);
+                }
+            }
+            
+            if (factoryPreviewMesh && factoryPreviewMesh.visible) {
+                const popup = document.getElementById('factory-emission-popup');
+                const worldPt = factoryPreviewMesh.position.clone().setY(8);
+                updatePopupPosition(popup, worldPt);
+            }
+            
+            if (selectedFactory && selectedFactory.mesh) {
+                const popup = document.getElementById('factory-select-popup');
+                const worldPt = selectedFactory.mesh.position.clone().setY(8);
+                updatePopupPosition(popup, worldPt);
+            }
         }
 
         // --- Green Corridor & Demo Mode Systems ---
@@ -2415,6 +3208,9 @@
             if (volumeMesh && isVolumeActive) {
                 volumeMesh.material.uniforms.uCamPos.value.copy(camera.position);
             }
+
+            // 8. Update placement interactions, shimmering, pulsing, and popups
+            updatePlacementAndInteractionFrame();
 
             controls.update();
             renderer.render(scene, camera);
@@ -2828,7 +3624,7 @@
                     controls.target.set(0, 0, 0);
                     controls.update();
 
-                    // Dismiss map with fade
+                    // Dismiss map and fire up the sim
                     const mapContainer = document.getElementById('map-container');
                     mapContainer.style.transition = 'opacity 0.6s ease';
                     mapContainer.style.opacity    = '0';
@@ -2838,14 +3634,11 @@
                     document.querySelector('#header-panel .subtitle').innerText =
                         `Custom Region (${sw.lat.toFixed(4)}°N, ${sw.lng.toFixed(4)}°E)`;
 
-                    // Kick off Three.js animation loop and time-of-day preset
+                    // Kick off animation loop, noon preset, and WebSocket
                     createVolumeRenderer();
                     animate();
                     setTimeout(() => setTimeOfDay('noon'), 400);
-
-                    // Step 2: Show AI context modal, then user presses Start Simulation
-                    showContextModal(center_lat, center_lon,
-                        `${sw.lat.toFixed(4)}°N ${sw.lng.toFixed(4)}°E`);
+                    connectWebSocket();
 
                 } catch (err) {
                     loading.style.opacity = '0';
@@ -2856,82 +3649,6 @@
                 }
             });
         })();
-
-        // ─────────────────────────────────────────────────────────────────────
-        // CONTEXT MODAL LOGIC
-        // ─────────────────────────────────────────────────────────────────────
-
-        async function showContextModal(lat, lon, areaName) {
-            const modal   = document.getElementById('context-modal');
-            const title   = document.getElementById('ctx-title');
-            const spinner = document.getElementById('ctx-spinner');
-            const content = document.getElementById('ctx-content');
-            const fallback= document.getElementById('ctx-fallback');
-
-            // Show modal with spinner
-            modal.style.display = 'flex';
-            title.innerText = `Setting up simulation for ${areaName}...`;
-
-            let ctx = null;
-            try {
-                const params = new URLSearchParams({ lat, lon, name: areaName });
-                const resp   = await fetch(`http://localhost:8000/fetch_area_context?${params}`);
-                ctx = await resp.json();
-            } catch (e) {
-                console.warn('[Context] Groq fetch failed, using defaults:', e);
-            }
-
-            // Hide spinner
-            spinner.style.display = 'none';
-
-            if (!ctx || !ctx.groq_available) {
-                // Show fallback message + immediate Start button
-                fallback.style.display = 'block';
-                // Still show the start button inside ctx-content with a dummy note
-                document.getElementById('ctx-notes').innerText = 'No AI context — simulation will use default traffic and source settings.';
-                document.getElementById('ctx-traffic-bar').style.width = '50%';
-                document.getElementById('ctx-traffic-pct').innerText = '50%';
-                document.getElementById('ctx-industries').innerHTML =
-                    '<span style="font-size:0.8rem;color:rgba(255,255,255,0.35);font-style:italic;">None detected</span>';
-                content.style.display = 'block';
-                return;
-            }
-
-            // ── Populate modal with Groq data ──
-            title.innerText = `Ready: ${areaName}`;
-
-            // Industries chips
-            const industriesEl = document.getElementById('ctx-industries');
-            if (ctx.known_industries && ctx.known_industries.length > 0) {
-                industriesEl.innerHTML = ctx.known_industries.map((ind, i) =>
-                    `<span style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);border-radius:20px;padding:4px 12px;font-size:0.78rem;font-weight:600;color:#fca5a5;display:flex;align-items:center;gap:6px;">
-                        <span style="width:8px;height:8px;background:#ef4444;border-radius:50%;display:inline-block;"></span>${ind}
-                    </span>`
-                ).join('');
-            } else {
-                industriesEl.innerHTML = '<span style="font-size:0.8rem;color:rgba(255,255,255,0.35);font-style:italic;">None detected for this area</span>';
-            }
-
-            // Traffic bar animate
-            const tl  = Math.round((ctx.traffic_level || 0.5) * 100);
-            document.getElementById('ctx-traffic-bar').style.width = tl + '%';
-            document.getElementById('ctx-traffic-pct').innerText   = tl + '%';
-
-            // Pollution notes
-            document.getElementById('ctx-notes').innerText = ctx.pollution_notes || '—';
-
-            content.style.display = 'block';
-        }
-
-        // Called when user clicks "Start Simulation" in the modal
-        function startSimulation() {
-            const modal = document.getElementById('context-modal');
-            modal.style.transition = 'opacity 0.4s ease';
-            modal.style.opacity    = '0';
-            setTimeout(() => { modal.style.display = 'none'; modal.style.opacity = ''; }, 450);
-            connectWebSocket();
-        }
-
     </script>
 </body>
 </html>
