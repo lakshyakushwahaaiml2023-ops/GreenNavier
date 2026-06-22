@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GreenNavier | Real-time Air Quality Simulation</title>
+    <!-- Leaflet.js CSS and JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -125,6 +128,67 @@
             grid-template-columns: 180px 1fr 240px;
             gap: 24px;
             align-items: start;
+            /* Minimize transition: slide panel down off-screen */
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            position: relative; /* needed for absolute × button */
+        }
+        #controls-panel.panel-hidden {
+            transform: translateX(-50%) translateY(calc(100% + 32px));
+            opacity: 0;
+            pointer-events: none;
+        }
+        /* Floating gear restore button */
+        #panel-restore-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 20;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(14, 16, 26, 0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(52, 211, 153, 0.35);
+            color: #34d399;
+            font-size: 1.25rem;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px -8px rgba(0,0,0,0.6);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        #panel-restore-btn:hover {
+            transform: scale(1.12);
+            box-shadow: 0 12px 28px -8px rgba(52,211,153,0.3);
+        }
+        /* Panel close × button */
+        #panel-close-btn {
+            position: absolute;
+            top: -12px;
+            right: -12px;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s ease, color 0.2s ease;
+            z-index: 11;
+            line-height: 1;
+        }
+        #panel-close-btn:hover {
+            background: rgba(239, 68, 68, 0.3);
+            color: #fff;
+            border-color: rgba(239, 68, 68, 0.5);
         }
 
         .panel-section {
@@ -365,7 +429,117 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
+    <!-- Fullscreen Leaflet Region Selector (Step 1) -->
+    <div id="map-container" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10000; background: #050508; display: flex; flex-direction: column;">
+        <div id="map" style="flex: 1; width: 100%; height: 100%;"></div>
+        
+        <!-- Instruction overlay -->
+        <div id="map-overlay" style="position: absolute; top: 24px; left: 50%; transform: translateX(-50%); z-index: 10001; pointer-events: none; text-align: center; width: 90%; max-width: 500px;">
+            <div style="background: rgba(10, 10, 18, 0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--panel-border); border-radius: 16px; padding: 16px 24px; box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7); display: inline-block; pointer-events: auto; width: 100%;">
+                <h2 style="font-family: 'Outfit'; margin: 0 0 6px 0; font-size: 1.35rem; font-weight: 800; background: linear-gradient(135deg, #10b981, #059669); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Indore Region Selector</h2>
+                <div style="font-size: 0.82rem; color: var(--text-secondary); font-weight: 500; line-height: 1.4;">
+                    Click and drag a box to select a simulation area (200m - 1500m across). Indore city limit is shown by the dashed box.
+                </div>
+                <div id="map-warning" style="font-size: 0.8rem; color: var(--accent-red); font-weight: 700; margin-top: 10px; display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Custom Tooltip floating on cursor during drawing -->
+        <div id="map-cursor-tooltip" style="position: absolute; pointer-events: none; z-index: 10002; display: none; background: rgba(239, 68, 68, 0.95); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; box-shadow: 0 5px 15px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); white-space: nowrap; transform: translate(12px, 12px);">
+            Currently available for Indore region only
+        </div>
+
+        <!-- Mode selection toolbar -->
+        <div style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 10001; display: flex; gap: 12px; background: rgba(10, 10, 18, 0.85); backdrop-filter: blur(12px); padding: 8px; border-radius: 12px; border: 1px solid var(--panel-border);">
+            <button id="map-mode-draw" class="tod-btn tod-btn-active" style="padding: 10px 20px; font-size: 0.8rem; font-weight: 700; cursor: pointer; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px;">✏️ Draw Selection</button>
+            <button id="map-mode-pan" class="tod-btn" style="padding: 10px 20px; font-size: 0.8rem; font-weight: 700; cursor: pointer; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px;">🖐️ Pan Map</button>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="map-loading" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(5, 5, 8, 0.85); z-index: 10003; display: none; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s ease; pointer-events: auto;">
+            <div style="text-align: center;">
+                <svg width="48" height="48" viewBox="0 0 38 38" stroke="var(--accent-green)" style="animation: spin 1s linear infinite; margin-bottom: 20px; display: inline-block;">
+                    <g fill="none" fill-rule="evenodd">
+                        <g transform="translate(1 1)" stroke-width="3">
+                            <circle stroke-opacity=".2" cx="18" cy="18" r="18"/>
+                            <path d="M36 18c0-9.94-8.06-18-18-18"/>
+                        </g>
+                    </g>
+                </svg>
+                <div style="font-family: 'Outfit'; font-size: 1.35rem; font-weight: 800; color: white;">Loading map data for selected region...</div>
+                <div style="font-size: 0.88rem; color: var(--text-secondary); margin-top: 8px;">Fetching OpenStreetMap geometry & rasterizing masks...</div>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+
+    <!-- ── Step 2: AI Context Modal (shown after region loads, before sim starts) ── -->
+    <div id="context-modal" style="display:none; position:fixed; inset:0; z-index:9000; background:rgba(5,5,8,0.82); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); align-items:center; justify-content:center;">
+        <div id="context-card" style="background:rgba(14,16,26,0.97); border:1px solid rgba(52,211,153,0.35); border-radius:20px; padding:32px 36px; max-width:560px; width:92vw; box-shadow:0 30px 70px -20px rgba(0,0,0,0.85), 0 0 0 1px rgba(52,211,153,0.08); font-family:'Outfit',sans-serif; position:relative; overflow:hidden;">
+            <!-- Glow accent -->
+            <div style="position:absolute;top:-80px;right:-80px;width:220px;height:220px;background:radial-gradient(circle,rgba(16,185,129,0.15) 0%,transparent 70%);pointer-events:none;"></div>
+            <!-- Header -->
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+                <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">🧠</div>
+                <div>
+                    <div id="ctx-title" style="font-size:1.2rem;font-weight:800;color:#fff;line-height:1.2;">Setting up simulation...</div>
+                    <div style="font-size:0.78rem;color:rgba(52,211,153,0.85);font-weight:600;margin-top:2px;">Powered by Groq · llama3-70b-8192</div>
+                </div>
+                <svg id="ctx-spinner" width="26" height="26" viewBox="0 0 38 38" stroke="#10b981" style="margin-left:auto;flex-shrink:0;animation:spin 1s linear infinite;">
+                    <g fill="none" fill-rule="evenodd"><g transform="translate(1 1)" stroke-width="3">
+                        <circle stroke-opacity=".2" cx="18" cy="18" r="18"/>
+                        <path d="M36 18c0-9.94-8.06-18-18-18"/>
+                    </g></g>
+                </svg>
+            </div>
+            <!-- Divider -->
+            <div style="height:1px;background:linear-gradient(90deg,rgba(52,211,153,0.3),transparent);margin:18px 0;"></div>
+            <!-- Content (hidden until fetch completes) -->
+            <div id="ctx-content" style="display:none;">
+                <!-- Industries found -->
+                <div style="margin-bottom:18px;">
+                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(52,211,153,0.7);margin-bottom:8px;">Industrial Sources Detected</div>
+                    <div id="ctx-industries" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+                </div>
+                <!-- Traffic bar -->
+                <div style="margin-bottom:18px;">
+                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(52,211,153,0.7);margin-bottom:8px;">AI Traffic Estimate</div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="flex:1;height:8px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;">
+                            <div id="ctx-traffic-bar" style="height:100%;background:linear-gradient(90deg,#10b981,#34d399);border-radius:4px;width:50%;transition:width 0.8s cubic-bezier(.4,0,.2,1);"></div>
+                        </div>
+                        <div id="ctx-traffic-pct" style="font-size:1rem;font-weight:800;color:#fff;min-width:42px;text-align:right;">50%</div>
+                    </div>
+                    <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);margin-top:6px;">Applied to all road sources. Adjust per-road sliders in the HUD after simulation starts.</div>
+                </div>
+                <!-- Pollution notes -->
+                <div style="margin-bottom:22px;">
+                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(52,211,153,0.7);margin-bottom:8px;">Pollution Context</div>
+                    <div id="ctx-notes" style="font-size:0.88rem;color:rgba(255,255,255,0.8);line-height:1.55;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 14px;"></div>
+                </div>
+                <!-- Disclaimer + CTA -->
+                <div style="font-size:0.72rem;color:rgba(255,255,255,0.35);margin-bottom:18px;text-align:center;">
+                    ✦ These are AI estimates — adjust traffic sliders and sources as needed after simulation starts
+                </div>
+                <button id="ctx-start-btn" onclick="startSimulation()" style="width:100%;padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-family:'Outfit',sans-serif;font-size:1rem;font-weight:800;cursor:pointer;letter-spacing:0.03em;box-shadow:0 8px 24px -8px rgba(16,185,129,0.5);transition:all 0.2s ease;display:flex;align-items:center;justify-content:center;gap:10px;">
+                    <span>▶</span> Start Simulation
+                </button>
+            </div>
+            <!-- Fallback message -->
+            <div id="ctx-fallback" style="display:none;font-size:0.88rem;color:rgba(255,255,255,0.5);text-align:center;padding:8px 0 16px;">
+                Using default parameters (AI context unavailable)
+            </div>
+        </div>
+    </div>
+
     <div id="canvas-container"></div>
+
     <div id="flash-overlay" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(239, 68, 68, 0.25); z-index: 5; display: none; pointer-events: none; opacity: 0; transition: opacity 0.5s ease;"></div>
     <div id="notification">Connecting to backend...</div>
     
@@ -425,6 +599,8 @@
 
     <!-- Bottom Controls HUD -->
     <div id="controls-panel" class="hud-panel">
+        <!-- Minimize close button -->
+        <button id="panel-close-btn" title="Minimize panel">×</button>
         <!-- Wind Section -->
         <div class="panel-section wind-widget">
             <div class="section-title" style="width: 100%;">
@@ -498,9 +674,8 @@
                     <button id="btn-demo-mode" class="ctrl-btn" style="color: var(--accent-yellow); border-color: rgba(251,191,36,0.25); margin-bottom: 0;">Demo Mode</button>
                     <button id="btn-green-corridor" class="ctrl-btn" style="color: var(--accent-green); border-color: rgba(52,211,153,0.25); margin-bottom: 0;">Green Corridor</button>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-                    <button id="btn-wind-shift" class="ctrl-btn" style="color: #60a5fa; border-color: rgba(96,165,250,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">Wind Shift</button>
-                    <button id="btn-reset" class="ctrl-btn" style="color: var(--accent-red); border-color: rgba(248,113,113,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">Reset</button>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 8px;">
+                    <button id="btn-wind-shift" class="ctrl-btn" style="color: #60a5fa; border-color: rgba(96,165,250,0.25); margin-bottom: 0; padding: 6px 8px; font-size: 0.75rem;">💨 Wind Shift</button>
                 </div>
                 <!-- Volume Fog Toggle -->
                 <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; margin-top: 4px;">
@@ -515,6 +690,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Floating gear button to restore the control panel -->
+    <button id="panel-restore-btn" title="Restore controls">⚙</button>
 
     <!-- Building Custom Modal Overlay -->
     <div id="building-modal">
@@ -538,20 +716,25 @@
     </div>
 
     <script>
-        // --- Geographic Projection Configuration ---
-        const center_lat = 22.7533;
-        const center_lon = 75.8937;
-        const radius_m = 800;
+        // --- Geographic Projection Configuration (mutable — updated on region select) ---
+        let center_lat = 22.7533;
+        let center_lon = 75.8937;
+        let radius_m   = 800;
 
-        // Accurate ellipsoidal scaling factors at target latitude (WGS84)
-        const a = 6378137.0;
+        // Ellipsoidal scaling factors — recomputed by updateProjection()
+        const a  = 6378137.0;
         const e2 = 0.00669437999014;
-        const lat_rad = center_lat * Math.PI / 180.0;
-        const N = a / Math.sqrt(1.0 - e2 * Math.sin(lat_rad) ** 2);
-        const M = a * (1.0 - e2) / Math.pow(1.0 - e2 * Math.sin(lat_rad) ** 2, 1.5);
-        
-        const meters_per_deg_lat = M * (Math.PI / 180.0);
-        const meters_per_deg_lon = N * Math.cos(lat_rad) * (Math.PI / 180.0);
+        let meters_per_deg_lat = 110574.0; // approx defaults
+        let meters_per_deg_lon = 95044.0;
+
+        function updateProjection() {
+            const lr = center_lat * Math.PI / 180.0;
+            const N  = a / Math.sqrt(1.0 - e2 * Math.sin(lr) ** 2);
+            const M  = a * (1.0 - e2) / Math.pow(1.0 - e2 * Math.sin(lr) ** 2, 1.5);
+            meters_per_deg_lat = M * (Math.PI / 180.0);
+            meters_per_deg_lon = N * Math.cos(lr) * (Math.PI / 180.0);
+        }
+        updateProjection(); // run once on load with defaults
 
         function project(lon, lat) {
             const x = (lon - center_lon) * meters_per_deg_lon;
@@ -560,8 +743,9 @@
         }
 
         function worldToGrid(x, z) {
-            const gx = Math.round((x - (-800)) / 1600 * 128);
-            const gy = Math.round((800 - z) / 1600 * 128); // since z = -pt.y
+            const span = radius_m * 2;
+            const gx = Math.round((x - (-radius_m)) / span * 128);
+            const gy = Math.round((radius_m - z)    / span * 128);
             return { gx: Math.max(0, Math.min(127, gx)), gy: Math.max(0, Math.min(127, gy)) };
         }
 
@@ -821,6 +1005,7 @@
         `;
 
         function createVolumeRenderer() {
+            if (volumeMesh) return; // already created — skip
             if (!renderer.capabilities.isWebGL2) {
                 console.warn('[Volume] WebGL2 not available — skipping volume renderer.');
                 return;
@@ -1075,124 +1260,156 @@
             try {
                 const response = await fetch('http://localhost:8000/map_data');
                 if (!response.ok) throw new Error("HTTP error " + response.status);
-                
                 const geojson = await response.json();
                 hideNotification();
-                
-                // 1. Extrude and render Buildings
-                geojson.buildings.features.forEach(feature => {
-                    const height = feature.properties.height;
-                    const coords = feature.geometry.coordinates[0];
-                    if (!coords || coords.length < 3) return;
-
-                    // Compute centroid for quick proximity lookup
-                    let sum_x = 0, sum_y = 0;
-                    coords.forEach(c => {
-                        const pt = project(c[0], c[1]);
-                        sum_x += pt.x;
-                        sum_y += pt.y;
-                    });
-                    const cx = sum_x / coords.length;
-                    const cz = -sum_y / coords.length;
-                    buildings_data.push({
-                        centroid: { x: cx, z: cz },
-                        height: height
-                    });
-
-                    // Create shape footprint with positive Y coordinates to align with Z-axis after rotation
-                    const shape = new THREE.Shape();
-                    const start = project(coords[0][0], coords[0][1]);
-                    shape.moveTo(start.x, start.y);
-                    for (let i = 1; i < coords.length; i++) {
-                        const pt = project(coords[i][0], coords[i][1]);
-                        shape.lineTo(pt.x, pt.y);
-                    }
-
-                    // Handle holes inside buildings if present
-                    if (feature.geometry.coordinates.length > 1) {
-                        for (let k = 1; k < feature.geometry.coordinates.length; k++) {
-                            const holeCoords = feature.geometry.coordinates[k];
-                            const holePath = new THREE.Path();
-                            const startHole = project(holeCoords[0][0], holeCoords[0][1]);
-                            holePath.moveTo(startHole.x, startHole.y);
-                            for (let i = 1; i < holeCoords.length; i++) {
-                                const pt = project(holeCoords[i][0], holeCoords[i][1]);
-                                holePath.lineTo(pt.x, pt.y);
-                            }
-                            shape.holes.push(holePath);
-                        }
-                    }
-
-                    // Extrude geometry along Z, stand upright by rotating mesh
-                    const extrudeSettings = { depth: height, bevelEnabled: false };
-                    const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-                    const mat = new THREE.MeshLambertMaterial({ 
-                        color: 0x1e1e2d, 
-                        roughness: 0.7 
-                    });
-                    
-                    const mesh = new THREE.Mesh(geom, mat);
-                    mesh.rotation.x = -Math.PI / 2;
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    scene.add(mesh);
-
-                    // Add subtle edges outline
-                    const edges = new THREE.EdgesGeometry(geom);
-                    const lineMat = new THREE.LineBasicMaterial({ color: 0x334155 });
-                    const line = new THREE.LineSegments(edges, lineMat);
-                    line.rotation.x = -Math.PI / 2;
-                    scene.add(line);
-                });
-
-                // 2. Render flat ribbon Roads
-                allRoadFeatures = geojson.roads.features;
-                geojson.roads.features.forEach(feature => {
-                    const coords = feature.geometry.coordinates;
-                    if (!coords || coords.length < 2) return;
-
-                    const points = [];
-                    coords.forEach(c => {
-                        const pt = project(c[0], c[1]);
-                        points.push(new THREE.Vector3(pt.x, 0.05, -pt.y)); // float slightly above ground
-                    });
-
-                    const geom = new THREE.BufferGeometry().setFromPoints(points);
-                    const mat = new THREE.LineBasicMaterial({ 
-                        color: 0x38bdf8, 
-                        transparent: true, 
-                        opacity: 0.65 
-                    });
-                    const roadLine = new THREE.Line(geom, mat);
-                    scene.add(roadLine);
-                });
-
-                // Find densest building cluster (canyon) dynamically via 10x10 binning grid
-                const bins = {};
-                let maxCount = 0;
-                let bestBin = { x: -200, z: 200 }; // sensible Indore fallback
-                buildings_data.forEach(b => {
-                    const bx = Math.floor((b.centroid.x + 800) / 160);
-                    const bz = Math.floor((b.centroid.z + 800) / 160);
-                    if (bx >= 0 && bx < 10 && bz >= 0 && bz < 10) {
-                        const key = `${bx},${bz}`;
-                        bins[key] = (bins[key] || 0) + 1;
-                        if (bins[key] > maxCount) {
-                            maxCount = bins[key];
-                            bestBin = { x: -800 + bx * 160 + 80, z: -800 + bz * 160 + 80 };
-                        }
-                    }
-                });
-                canyonCenter.set(bestBin.x, 15, bestBin.z);
-                console.log(`Densest building canyon identified at: (${canyonCenter.x}, ${canyonCenter.z}) with ${maxCount} buildings.`);
-
-                // 3. Render road sliders in HUD Traffic Panel
-                buildTrafficSliders(geojson.roads);
-                
-                console.log(`Successfully loaded ${buildings_data.length} buildings and features.`);
+                loadMapDataFromResponse(geojson);
             } catch (err) {
                 console.error("Failed to load map data from backend:", err);
                 showNotification("Failed to fetch map data. Make sure backend is running at http://localhost:8000");
+            }
+        }
+
+        // Accepts a geojson object and rebuilds all 3D geometry for current region.
+        // Called both by loadMapData() and by the Leaflet region selector on region load.
+        function loadMapDataFromResponse(geojson) {
+            hideNotification();
+
+            // Clear previous geometry (buildings & roads from prior session)
+            clearDynamicScene();
+
+            const span = radius_m * 2;
+
+            // 1. Extrude and render Buildings
+            geojson.buildings.features.forEach(feature => {
+                const height = feature.properties.height;
+                const coords = feature.geometry.coordinates[0];
+                if (!coords || coords.length < 3) return;
+
+                let sum_x = 0, sum_y = 0;
+                coords.forEach(c => {
+                    const pt = project(c[0], c[1]);
+                    sum_x += pt.x;
+                    sum_y += pt.y;
+                });
+                const cx = sum_x / coords.length;
+                const cz = -sum_y / coords.length;
+                buildings_data.push({ centroid: { x: cx, z: cz }, height: height });
+
+                const shape = new THREE.Shape();
+                const start = project(coords[0][0], coords[0][1]);
+                shape.moveTo(start.x, start.y);
+                for (let i = 1; i < coords.length; i++) {
+                    const pt = project(coords[i][0], coords[i][1]);
+                    shape.lineTo(pt.x, pt.y);
+                }
+
+                if (feature.geometry.coordinates.length > 1) {
+                    for (let k = 1; k < feature.geometry.coordinates.length; k++) {
+                        const holeCoords = feature.geometry.coordinates[k];
+                        const holePath = new THREE.Path();
+                        const startHole = project(holeCoords[0][0], holeCoords[0][1]);
+                        holePath.moveTo(startHole.x, startHole.y);
+                        for (let i = 1; i < holeCoords.length; i++) {
+                            const pt = project(holeCoords[i][0], holeCoords[i][1]);
+                            holePath.lineTo(pt.x, pt.y);
+                        }
+                        shape.holes.push(holePath);
+                    }
+                }
+
+                const extrudeSettings = { depth: height, bevelEnabled: false };
+                const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                const mat  = new THREE.MeshLambertMaterial({ color: 0x1e1e2d, roughness: 0.7 });
+                const mesh = new THREE.Mesh(geom, mat);
+                mesh.rotation.x = -Math.PI / 2;
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                mesh.userData.isDynamic = true;
+                scene.add(mesh);
+
+                const edges   = new THREE.EdgesGeometry(geom);
+                const lineMat = new THREE.LineBasicMaterial({ color: 0x334155 });
+                const line    = new THREE.LineSegments(edges, lineMat);
+                line.rotation.x = -Math.PI / 2;
+                line.userData.isDynamic = true;
+                scene.add(line);
+            });
+
+            // 2. Render flat ribbon Roads
+            allRoadFeatures = geojson.roads.features;
+            geojson.roads.features.forEach(feature => {
+                const coords = feature.geometry.coordinates;
+                if (!coords || coords.length < 2) return;
+
+                const points = [];
+                coords.forEach(c => {
+                    const pt = project(c[0], c[1]);
+                    points.push(new THREE.Vector3(pt.x, 0.05, -pt.y));
+                });
+
+                const geom = new THREE.BufferGeometry().setFromPoints(points);
+                const mat  = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.65 });
+                const roadLine = new THREE.Line(geom, mat);
+                roadLine.userData.isDynamic = true;
+                scene.add(roadLine);
+            });
+
+            // 3. Find densest building cluster
+            const bins = {};
+            let maxCount = 0;
+            let bestBin  = { x: 0, z: 0 };
+            buildings_data.forEach(b => {
+                const bx = Math.floor((b.centroid.x + radius_m) / (span / 10));
+                const bz = Math.floor((b.centroid.z + radius_m) / (span / 10));
+                if (bx >= 0 && bx < 10 && bz >= 0 && bz < 10) {
+                    const key = `${bx},${bz}`;
+                    bins[key] = (bins[key] || 0) + 1;
+                    if (bins[key] > maxCount) {
+                        maxCount = bins[key];
+                        bestBin  = { x: -radius_m + bx * (span / 10) + (span / 20), z: -radius_m + bz * (span / 10) + (span / 20) };
+                    }
+                }
+            });
+            canyonCenter.set(bestBin.x, 15, bestBin.z);
+            console.log(`Canyon @ (${canyonCenter.x.toFixed(0)}, ${canyonCenter.z.toFixed(0)}) — ${maxCount} buildings.`);
+
+            // 4. Build traffic sliders
+            buildTrafficSliders(geojson.roads);
+            console.log(`Loaded ${buildings_data.length} buildings.`);
+        }
+
+        // Remove scene objects tagged isDynamic (buildings, roads from previous region)
+        function clearDynamicScene() {
+            buildings_data.length = 0;
+            allRoadFeatures = [];
+            const toRemove = [];
+            scene.traverse(obj => { if (obj.userData && obj.userData.isDynamic) toRemove.push(obj); });
+            toRemove.forEach(obj => {
+                scene.remove(obj);
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) {
+                    if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+                    else obj.material.dispose();
+                }
+            });
+        }
+
+        // Rescale static scene helpers (ground, grid, pollution plane, volume box) to new radius_m
+        function rescaleScene() {
+            const side = radius_m * 2;
+            ground.geometry.dispose();
+            ground.geometry = new THREE.PlaneGeometry(side, side);
+
+            pollutionPlane.geometry.dispose();
+            pollutionPlane.geometry = new THREE.PlaneGeometry(side, side);
+
+            gridHelper.scale.setScalar(side / 1600);
+
+            if (volumeMesh) {
+                volumeMesh.geometry.dispose();
+                volumeMesh.geometry = new THREE.BoxGeometry(side, 150, side);
+                volumeMesh.material.uniforms.uBoundsMin.value.set(-radius_m, 0,   -radius_m);
+                volumeMesh.material.uniforms.uBoundsMax.value.set( radius_m, 150,  radius_m);
             }
         }
 
@@ -1423,26 +1640,27 @@
             }, stepTime);
         };
 
-        // Reset Simulation Action
-        document.getElementById('btn-reset').onclick = () => {
-            fetch('http://localhost:8000/reset', { method: 'POST' })
-                .then(() => {
-                    // Flash scene background to green momentarily
-                    const originalColor = scene.background.clone();
-                    scene.background.set(0x10b981);
-                    
-                    let progress = 0;
-                    const flashInterval = setInterval(() => {
-                        progress += 0.08;
-                        scene.background.lerpColors(new THREE.Color(0x10b981), new THREE.Color(0x0a0a0f), progress);
-                        if (progress >= 1.0) {
-                            clearInterval(flashInterval);
-                            scene.background.copy(originalColor);
-                        }
-                    }, 25);
-                })
-                .catch(err => console.error("Reset failed:", err));
-        };
+        // ── Panel Minimize / Restore ──
+        (function initPanelToggle() {
+            const panel      = document.getElementById('controls-panel');
+            const closeBtn   = document.getElementById('panel-close-btn');
+            const restoreBtn = document.getElementById('panel-restore-btn');
+
+            closeBtn.onclick = () => {
+                panel.classList.add('panel-hidden');
+                // Show gear after transition completes
+                setTimeout(() => {
+                    restoreBtn.style.display = 'flex';
+                    requestAnimationFrame(() => { restoreBtn.style.opacity = '1'; });
+                }, 310);
+            };
+
+            restoreBtn.onclick = () => {
+                restoreBtn.style.display = 'none';
+                panel.classList.remove('panel-hidden');
+            };
+        })();
+
 
         // Rush Hour Action (animate sliders to 80% and wind to West 0.6)
         document.getElementById('btn-rush-hour').onclick = () => {
@@ -2058,8 +2276,12 @@
         }
 
         // --- Animation Loop ---
+        let _animRunning = false;
         function animate() {
-            requestAnimationFrame(animate);
+            if (_animRunning) return; // prevent duplicate loops on second call
+            _animRunning = true;
+            function _loop() {
+            requestAnimationFrame(_loop);
 
             // 1. Interpolate colors and intensities for Time of Day transition
             const lerpSpeed = 0.03;
@@ -2196,6 +2418,8 @@
 
             controls.update();
             renderer.render(scene, camera);
+            } // end _loop
+            _loop(); // kick off RAF cycle
         }
 
         // --- Window Resize Handler ---
@@ -2409,18 +2633,305 @@
             }
         };
 
-        // --- Initializer ---
+        // --- Initializer (called after region is selected and scene is ready) ---
         async function init() {
-            // Create the volume renderer before the first frame
             createVolumeRenderer();
             animate();
             await loadMapData();
-            // Trigger default Noon preset on startup after map data/sliders are loaded
             setTimeout(() => setTimeOfDay('noon'), 500);
             connectWebSocket();
         }
 
-        init();
+        // ─────────────────────────────────────────────────────────────────────
+        // LEAFLET REGION SELECTOR
+        // Shown fullscreen on load. On valid selection → dismisses, calls init().
+        // ─────────────────────────────────────────────────────────────────────
+        (function initLeafletSelector() {
+            // Indore city bounding box clamp limits
+            const CITY_MIN_LAT = 22.65, CITY_MAX_LAT = 22.82;
+            const CITY_MIN_LON = 75.75, CITY_MAX_LON = 75.97;
+
+            // Initialise Leaflet map centered on Indore
+            const leafMap = L.map('map', { zoomControl: true, attributionControl: false }).setView([22.7196, 75.8577], 13);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© OpenStreetMap, © CARTO',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(leafMap);
+
+            // Draw city-limit boundary rectangle (dashed)
+            L.rectangle(
+                [[CITY_MIN_LAT, CITY_MIN_LON], [CITY_MAX_LAT, CITY_MAX_LON]],
+                { color: '#34d399', weight: 2, dashArray: '8 6', fill: false, opacity: 0.7 }
+            ).addTo(leafMap);
+
+            // State
+            let isDrawMode    = true;
+            let isDrawing     = false;
+            let drawStartLL   = null;  // L.LatLng of mouse-down
+            let selectionRect = null;  // L.Rectangle shown during drag
+            let clamped       = false; // whether last drag was clamped to city limits
+
+            const tooltip  = document.getElementById('map-cursor-tooltip');
+            const warning  = document.getElementById('map-warning');
+            const loading  = document.getElementById('map-loading');
+
+            // Mode buttons
+            document.getElementById('map-mode-draw').onclick = () => {
+                isDrawMode = true;
+                leafMap.dragging.disable();
+                leafMap.getContainer().style.cursor = 'crosshair';
+                document.getElementById('map-mode-draw').classList.add('tod-btn-active');
+                document.getElementById('map-mode-pan').classList.remove('tod-btn-active');
+            };
+            document.getElementById('map-mode-pan').onclick = () => {
+                isDrawMode = false;
+                leafMap.dragging.enable();
+                leafMap.getContainer().style.cursor = '';
+                document.getElementById('map-mode-pan').classList.add('tod-btn-active');
+                document.getElementById('map-mode-draw').classList.remove('tod-btn-active');
+            };
+
+            // Start in draw mode
+            leafMap.dragging.disable();
+            leafMap.getContainer().style.cursor = 'crosshair';
+
+            // Helper: clamp a LatLng to city bounds
+            function clampLL(ll) {
+                return L.latLng(
+                    Math.max(CITY_MIN_LAT, Math.min(CITY_MAX_LAT, ll.lat)),
+                    Math.max(CITY_MIN_LON, Math.min(CITY_MAX_LON, ll.lng))
+                );
+            }
+
+            // Helper: compute metric side length (metres) of current rectangle
+            function getRectMeters(sw, ne) {
+                const w = leafMap.distance(L.latLng(sw.lat, sw.lng), L.latLng(sw.lat, ne.lng));
+                const h = leafMap.distance(L.latLng(sw.lat, sw.lng), L.latLng(ne.lat, sw.lng));
+                return { w, h };
+            }
+
+            // Hover: move tooltip
+            leafMap.on('mousemove', e => {
+                if (!isDrawMode) return;
+                const ll = e.latlng;
+                const outside = ll.lat < CITY_MIN_LAT || ll.lat > CITY_MAX_LAT || ll.lng < CITY_MIN_LON || ll.lng > CITY_MAX_LON;
+
+                // Update floating cursor tooltip visibility
+                if (outside) {
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = e.originalEvent.clientX + 'px';
+                    tooltip.style.top  = e.originalEvent.clientY + 'px';
+                } else {
+                    tooltip.style.display = 'none';
+                }
+
+                // During active draw: update live rectangle
+                if (isDrawing && drawStartLL) {
+                    const endClamped = clampLL(ll);
+                    clamped = (endClamped.lat !== ll.lat || endClamped.lng !== ll.lng);
+
+                    const bounds = L.latLngBounds(drawStartLL, endClamped);
+                    if (selectionRect) {
+                        selectionRect.setBounds(bounds);
+                    } else {
+                        selectionRect = L.rectangle(bounds, {
+                            color: '#34d399', weight: 2,
+                            fillColor: '#34d399', fillOpacity: 0.12
+                        }).addTo(leafMap);
+                    }
+                }
+            });
+
+            leafMap.on('mouseout', () => { tooltip.style.display = 'none'; });
+
+            // Mouse-down: start draw
+            leafMap.on('mousedown', e => {
+                if (!isDrawMode) return;
+                isDrawing  = true;
+                drawStartLL = clampLL(e.latlng);
+                if (selectionRect) { leafMap.removeLayer(selectionRect); selectionRect = null; }
+                warning.style.display = 'none';
+            });
+
+            // Mouse-up: finish draw, validate, then send to backend
+            leafMap.on('mouseup', async e => {
+                if (!isDrawMode || !isDrawing) return;
+                isDrawing = false;
+                tooltip.style.display = 'none';
+
+                if (!selectionRect) return;
+
+                const bounds = selectionRect.getBounds();
+                const sw     = bounds.getSouthWest();
+                const ne     = bounds.getNorthEast();
+
+                // Validate size
+                const { w, h } = getRectMeters(sw, ne);
+                const side = Math.max(w, h);
+
+                if (side < 200 || Math.min(w, h) < 200) {
+                    warning.innerText = 'Please select an area between 200m and 1500m across';
+                    warning.style.display = 'block';
+                    leafMap.removeLayer(selectionRect);
+                    selectionRect = null;
+                    return;
+                }
+                if (side > 1500) {
+                    warning.innerText = 'Please select an area between 200m and 1500m across';
+                    warning.style.display = 'block';
+                    leafMap.removeLayer(selectionRect);
+                    selectionRect = null;
+                    return;
+                }
+
+                // Show loading overlay
+                loading.style.display = 'flex';
+                requestAnimationFrame(() => { loading.style.opacity = '1'; });
+
+                try {
+                    const resp = await fetch('http://localhost:8000/load_region', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            min_lat: sw.lat,
+                            max_lat: ne.lat,
+                            min_lon: sw.lng,
+                            max_lon: ne.lng
+                        })
+                    });
+                    const data = await resp.json();
+
+                    if (data.status === 'error') {
+                        loading.style.opacity = '0';
+                        setTimeout(() => { loading.style.display = 'none'; }, 300);
+                        warning.innerText = data.message || 'Backend error — try again.';
+                        warning.style.display = 'block';
+                        return;
+                    }
+
+                    // Update projection variables for the new region
+                    center_lat = data.center[0];
+                    center_lon = data.center[1];
+                    radius_m   = data.radius_m;
+                    updateProjection();
+
+                    // Rescale static scene planes / helpers
+                    rescaleScene();
+
+                    // Load the 3D geometry from the response GeoJSON
+                    loadMapDataFromResponse(data.map_data);
+
+                    // Auto-fit camera to region size
+                    const camScale = radius_m / 800;
+                    camera.position.set(500 * camScale, 600 * camScale, 800 * camScale);
+                    controls.target.set(0, 0, 0);
+                    controls.update();
+
+                    // Dismiss map with fade
+                    const mapContainer = document.getElementById('map-container');
+                    mapContainer.style.transition = 'opacity 0.6s ease';
+                    mapContainer.style.opacity    = '0';
+                    setTimeout(() => { mapContainer.style.display = 'none'; leafMap.remove(); }, 650);
+
+                    // Update header subtitle to show selected region
+                    document.querySelector('#header-panel .subtitle').innerText =
+                        `Custom Region (${sw.lat.toFixed(4)}°N, ${sw.lng.toFixed(4)}°E)`;
+
+                    // Kick off Three.js animation loop and time-of-day preset
+                    createVolumeRenderer();
+                    animate();
+                    setTimeout(() => setTimeOfDay('noon'), 400);
+
+                    // Step 2: Show AI context modal, then user presses Start Simulation
+                    showContextModal(center_lat, center_lon,
+                        `${sw.lat.toFixed(4)}°N ${sw.lng.toFixed(4)}°E`);
+
+                } catch (err) {
+                    loading.style.opacity = '0';
+                    setTimeout(() => { loading.style.display = 'none'; }, 300);
+                    warning.innerText = 'Connection error — is the backend running?';
+                    warning.style.display = 'block';
+                    console.error('load_region failed:', err);
+                }
+            });
+        })();
+
+        // ─────────────────────────────────────────────────────────────────────
+        // CONTEXT MODAL LOGIC
+        // ─────────────────────────────────────────────────────────────────────
+
+        async function showContextModal(lat, lon, areaName) {
+            const modal   = document.getElementById('context-modal');
+            const title   = document.getElementById('ctx-title');
+            const spinner = document.getElementById('ctx-spinner');
+            const content = document.getElementById('ctx-content');
+            const fallback= document.getElementById('ctx-fallback');
+
+            // Show modal with spinner
+            modal.style.display = 'flex';
+            title.innerText = `Setting up simulation for ${areaName}...`;
+
+            let ctx = null;
+            try {
+                const params = new URLSearchParams({ lat, lon, name: areaName });
+                const resp   = await fetch(`http://localhost:8000/fetch_area_context?${params}`);
+                ctx = await resp.json();
+            } catch (e) {
+                console.warn('[Context] Groq fetch failed, using defaults:', e);
+            }
+
+            // Hide spinner
+            spinner.style.display = 'none';
+
+            if (!ctx || !ctx.groq_available) {
+                // Show fallback message + immediate Start button
+                fallback.style.display = 'block';
+                // Still show the start button inside ctx-content with a dummy note
+                document.getElementById('ctx-notes').innerText = 'No AI context — simulation will use default traffic and source settings.';
+                document.getElementById('ctx-traffic-bar').style.width = '50%';
+                document.getElementById('ctx-traffic-pct').innerText = '50%';
+                document.getElementById('ctx-industries').innerHTML =
+                    '<span style="font-size:0.8rem;color:rgba(255,255,255,0.35);font-style:italic;">None detected</span>';
+                content.style.display = 'block';
+                return;
+            }
+
+            // ── Populate modal with Groq data ──
+            title.innerText = `Ready: ${areaName}`;
+
+            // Industries chips
+            const industriesEl = document.getElementById('ctx-industries');
+            if (ctx.known_industries && ctx.known_industries.length > 0) {
+                industriesEl.innerHTML = ctx.known_industries.map((ind, i) =>
+                    `<span style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);border-radius:20px;padding:4px 12px;font-size:0.78rem;font-weight:600;color:#fca5a5;display:flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;background:#ef4444;border-radius:50%;display:inline-block;"></span>${ind}
+                    </span>`
+                ).join('');
+            } else {
+                industriesEl.innerHTML = '<span style="font-size:0.8rem;color:rgba(255,255,255,0.35);font-style:italic;">None detected for this area</span>';
+            }
+
+            // Traffic bar animate
+            const tl  = Math.round((ctx.traffic_level || 0.5) * 100);
+            document.getElementById('ctx-traffic-bar').style.width = tl + '%';
+            document.getElementById('ctx-traffic-pct').innerText   = tl + '%';
+
+            // Pollution notes
+            document.getElementById('ctx-notes').innerText = ctx.pollution_notes || '—';
+
+            content.style.display = 'block';
+        }
+
+        // Called when user clicks "Start Simulation" in the modal
+        function startSimulation() {
+            const modal = document.getElementById('context-modal');
+            modal.style.transition = 'opacity 0.4s ease';
+            modal.style.opacity    = '0';
+            setTimeout(() => { modal.style.display = 'none'; modal.style.opacity = ''; }, 450);
+            connectWebSocket();
+        }
+
     </script>
 </body>
 </html>

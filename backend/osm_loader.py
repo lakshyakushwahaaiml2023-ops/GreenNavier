@@ -252,7 +252,10 @@ def rasterize(buildings, roads, grid_size=128, center_lat=22.7533, center_lon=75
     np.savez_compressed(npz_path, 
                        obstacle_mask=obstacle_mask, 
                        road_mask=road_mask, 
-                       height_map=height_map)
+                       height_map=height_map,
+                       center_lat=center_lat,
+                       center_lon=center_lon,
+                       radius_m=radius_m)
     print(f"Saved numpy masks to {npz_path}")
     
     # Save verification PNG: buildings=dark gray (64,64,64), roads=yellow (255,220,0), air=white (255,255,255)
@@ -270,6 +273,163 @@ def rasterize(buildings, roads, grid_size=128, center_lat=22.7533, center_lon=75
     print(f"Saved verification PNG to {png_path}")
     
     return obstacle_mask, road_mask, height_map
+
+def get_bbox_meters(min_lat, max_lat, min_lon, max_lon):
+    """
+    Computes width and height in meters, center lat/lon, and scaling factors for a bounding box.
+    """
+    center_lat = (min_lat + max_lat) / 2.0
+    center_lon = (min_lon + max_lon) / 2.0
+    
+    a = 6378137.0  # Earth equatorial radius (meters)
+    e2 = 0.00669437999014  # Eccentricity squared
+    
+    lat_rad = np.radians(center_lat)
+    N = a / np.sqrt(1.0 - e2 * np.sin(lat_rad)**2)
+    M = a * (1.0 - e2) / (1.0 - e2 * np.sin(lat_rad)**2)**1.5
+    
+    meters_per_deg_lat = M * (np.pi / 180.0)
+    meters_per_deg_lon = N * np.cos(lat_rad) * (np.pi / 180.0)
+    
+    width_m = (max_lon - min_lon) * meters_per_deg_lon
+    height_m = (max_lat - min_lat) * meters_per_deg_lat
+    
+    return width_m, height_m, center_lat, center_lon, meters_per_deg_lat, meters_per_deg_lon
+
+def fetch_and_rasterize_bbox(min_lat, max_lat, min_lon, max_lon):
+    """
+    Fetches OSM geometry for a bounding box, pads it to a square, and rasterizes it to a 128x128 grid.
+    """
+    # 1. Get sizes
+    width_m, height_m, center_lat, center_lon, meters_per_deg_lat, meters_per_deg_lon = get_bbox_meters(
+        min_lat, max_lat, min_lon, max_lon
+    )
+    
+    # Validate size limits (200m - 1500m across)
+    if width_m < 200.0 or height_m < 200.0 or width_m > 1500.0 or height_m > 1500.0:
+        raise ValueError("Please select an area between 200m and 1500m across")
+        
+    # Pad to square to preserve aspect ratio
+    size_m = max(width_m, height_m)
+    radius_m = size_m / 2.0
+    
+    half_size_lat = radius_m / meters_per_deg_lat
+    half_size_lon = radius_m / meters_per_deg_lon
+    
+    pad_min_lat = center_lat - half_size_lat
+    pad_max_lat = center_lat + half_size_lat
+    pad_min_lon = center_lon - half_size_lon
+    pad_max_lon = center_lon + half_size_lon
+    
+    print(f"Original select bbox meters: {width_m:.1f}m x {height_m:.1f}m")
+    print(f"Padded square bbox center: ({center_lat}, {center_lon}), radius: {radius_m:.1f}m")
+    
+    # 2. Fetch from OSMnx
+    # Bbox format in OSMnx 2.x is (left, bottom, right, top) = (min_lon, min_lat, max_lon, max_lat)
+    bbox_tuple = (pad_min_lon, pad_min_lat, pad_max_lon, pad_max_lat)
+    
+    # Fetch buildings
+    try:
+        try:
+            gdf_buildings = ox.features_from_bbox(bbox=bbox_tuple, tags={'building': True})
+        except TypeError:
+            # Fallback for positional signature
+            gdf_buildings = ox.features_from_bbox(pad_max_lat, pad_min_lat, pad_max_lon, pad_min_lon, tags={'building': True})
+        print(f"Fetched {len(gdf_buildings)} building features.")
+    except Exception as e:
+        print(f"Warning: Failed to fetch buildings: {e}")
+        gdf_buildings = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+        
+    # Fetch road network
+    try:
+        try:
+            G = ox.graph_from_bbox(bbox=bbox_tuple, network_type='all')
+        except TypeError:
+            # Fallback for positional signature
+            G = ox.graph_from_bbox(pad_max_lat, pad_min_lat, pad_max_lon, pad_min_lon, network_type='all')
+        gdf_nodes, gdf_edges = ox.graph_to_gdfs(G)
+        print(f"Fetched {len(gdf_edges)} road segments.")
+    except Exception as e:
+        print(f"Warning: Failed to fetch roads: {e}")
+        gdf_edges = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+        
+    # 3. Parse buildings: list of (polygon, height_m)
+    buildings = []
+    if not gdf_buildings.empty:
+        levels_col = 'building:levels' if 'building:levels' in gdf_buildings.columns else None
+        height_col = 'height' if 'height' in gdf_buildings.columns else None
+        
+        for idx, row in gdf_buildings.iterrows():
+            geom = row.geometry
+            if geom is None:
+                continue
+            
+            height = 10.5
+            levels_val = safe_get_scalar(row, levels_col)
+            height_val = safe_get_scalar(row, height_col)
+                
+            if levels_val is not None:
+                try:
+                    levels_num = float(str(levels_val).strip())
+                    height = levels_num * 3.5
+                except ValueError:
+                    pass
+            elif height_val is not None:
+                try:
+                    val_str = str(height_val).lower().replace('m', '').strip()
+                    height = float(val_str)
+                except ValueError:
+                    pass
+            
+            if geom.geom_type == 'Polygon':
+                buildings.append((geom, height))
+            elif geom.geom_type == 'MultiPolygon':
+                for poly in geom.geoms:
+                    buildings.append((poly, height))
+                    
+    # 4. Parse roads: list of (linestring, road_type, name)
+    roads = []
+    if not gdf_edges.empty:
+        highway_col = 'highway' if 'highway' in gdf_edges.columns else None
+        name_col = 'name' if 'name' in gdf_edges.columns else None
+        for idx, row in gdf_edges.iterrows():
+            geom = row.geometry
+            if geom is None:
+                continue
+            
+            road_type = 'residential'
+            h_val = safe_get_scalar(row, highway_col)
+            if h_val is not None:
+                h_val = str(h_val).lower().strip()
+                
+                primary_types = {'primary', 'motorway', 'trunk', 'primary_link', 'motorway_link', 'trunk_link'}
+                secondary_types = {'secondary', 'tertiary', 'secondary_link', 'tertiary_link'}
+                
+                if h_val in primary_types:
+                    road_type = 'primary'
+                elif h_val in secondary_types:
+                    road_type = 'secondary'
+                else:
+                    road_type = 'residential'
+                    
+            name_val = safe_get_scalar(row, name_col) if name_col else None
+            if not name_val:
+                name_val = f"Unnamed {road_type.capitalize()}"
+            else:
+                name_val = str(name_val)
+                    
+            if geom.geom_type == 'LineString':
+                roads.append((geom, road_type, name_val))
+            elif geom.geom_type == 'MultiLineString':
+                for ls in geom.geoms:
+                    roads.append((ls, road_type, name_val))
+                    
+    # 5. Rasterize and save to NPZ
+    obstacle_mask, road_mask, height_map = rasterize(
+        buildings, roads, grid_size=128, center_lat=center_lat, center_lon=center_lon, radius_m=radius_m
+    )
+    
+    return buildings, roads, obstacle_mask, road_mask, height_map, center_lat, center_lon, radius_m
 
 if __name__ == '__main__':
     # Vijay Nagar Square, Indore coordinates

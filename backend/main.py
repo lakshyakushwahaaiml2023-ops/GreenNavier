@@ -1,13 +1,26 @@
 import os
+import json
 import base64
 import sys
 import asyncio
+import datetime
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from shapely.geometry import mapping
+
+# Load .env from the backend directory
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
+
+# Groq client (lazy-initialised so startup still works if key is missing)
+try:
+    from groq import Groq as GroqClient
+    _groq_client = GroqClient(api_key=os.environ.get('GROQ_API_KEY', ''))
+except Exception:
+    _groq_client = None
 
 # Add parent directory to path to ensure robust imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -189,6 +202,139 @@ class BuildingSettings(BaseModel):
     w: int
     h: int
     height_m: float
+
+class RegionSettings(BaseModel):
+    min_lat: float
+    max_lat: float
+    min_lon: float
+    max_lon: float
+
+@app.post("/load_region")
+async def load_region(settings: RegionSettings):
+    global solver, buildings_latlon, roads_latlon, step_counter
+    from backend.osm_loader import fetch_and_rasterize_bbox
+    try:
+        buildings, roads, obstacle_mask, road_mask, height_map, center_lat, center_lon, radius_m = await asyncio.to_thread(
+            fetch_and_rasterize_bbox,
+            settings.min_lat,
+            settings.max_lat,
+            settings.min_lon,
+            settings.max_lon
+        )
+    except ValueError as val_err:
+        return {"status": "error", "message": str(val_err)}
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to load region: {str(e)}"}
+
+    buildings_latlon = buildings
+    roads_latlon = roads
+    step_counter = 0
+
+    solver = StableFluidsSolver(
+        npz_path='data/grid_masks.npz',
+        roads=roads,
+        center_lat=center_lat,
+        center_lon=center_lon,
+        radius_m=radius_m
+    )
+    
+    num_roads = len(roads_latlon)
+    solver.traffic_sources = {i: 0.1 for i in range(num_roads)}
+    solver.wind_angle = 270.0
+    solver.wind_speed = 0.3
+
+    map_data = get_map_data()
+
+    return {
+        "status": "success",
+        "map_data": map_data,
+        "center": [center_lat, center_lon],
+        "radius_m": radius_m
+    }
+
+@app.get("/fetch_area_context")
+async def fetch_area_context(lat: float, lon: float, name: str = "Unknown Area"):
+    """
+    Calls Groq llama3-70b-8192 to get urban pollution context for the selected area.
+    Applies the traffic_level and known_industries to the live solver.
+    Falls back silently to defaults if the API call fails.
+    """
+    global solver
+
+    # --- Build Groq prompt ---
+    now_ist = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+    time_str = now_ist.strftime("%H:%M IST, %A")
+
+    system_prompt = (
+        "You are an urban pollution data assistant. Given a neighborhood in Indore, India, "
+        "return a JSON object with these fields:\n"
+        "- traffic_level: float 0.0-1.0 (estimated current traffic intensity based on time of day and area type)\n"
+        "- known_industries: list of strings (known factories or industrial zones nearby, max 3)\n"
+        "- road_types: object mapping road names to traffic intensity (0.0-1.0)\n"
+        "- pollution_notes: string (one sentence about this area's known pollution issues)\n"
+        "Return ONLY valid JSON, no explanation."
+    )
+    user_msg = f"Area: {name}, Indore. Current time: {time_str}. Coordinates: {lat:.4f}, {lon:.4f}"
+
+    # Defaults used if Groq is unavailable
+    context = {
+        "traffic_level": 0.5,
+        "known_industries": [],
+        "road_types": {},
+        "pollution_notes": "No AI context available — using default parameters.",
+        "groq_available": False
+    }
+
+    if _groq_client:
+        try:
+            chat = _groq_client.chat.completions.create(
+                model="llama3-70b-8192",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_msg}
+                ],
+                temperature=0.3,
+                max_tokens=512,
+                timeout=12.0
+            )
+            raw = chat.choices[0].message.content.strip()
+            # Strip markdown fences if model wraps response
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            parsed = json.loads(raw)
+            context["traffic_level"]    = float(parsed.get("traffic_level", 0.5))
+            context["known_industries"] = parsed.get("known_industries", [])[:3]
+            context["road_types"]       = parsed.get("road_types", {})
+            context["pollution_notes"]  = str(parsed.get("pollution_notes", ""))
+            context["groq_available"]   = True
+        except Exception as groq_err:
+            print(f"[Groq] context fetch failed: {groq_err} — falling back to defaults")
+
+    # --- Apply context to live solver ---
+    if solver:
+        # Set uniform traffic level across all road sources
+        tl = context["traffic_level"]
+        for road_id in list(solver.traffic_sources.keys()):
+            solver.traffic_sources[road_id] = tl
+
+        # Place point sources at approximate grid positions for known industries
+        grid_size = solver.grid_size  # 128
+        solver.point_sources = []
+        industries = context["known_industries"]
+        positions = [
+            (int(grid_size * 0.25), int(grid_size * 0.25)),
+            (int(grid_size * 0.75), int(grid_size * 0.30)),
+            (int(grid_size * 0.50), int(grid_size * 0.75)),
+        ]
+        for i, industry in enumerate(industries[:3]):
+            gx, gy = positions[i]
+            solver.point_sources.append((gx, gy, 0.6))
+            print(f"[Groq] Placed source for '{industry}' at grid ({gx},{gy})")
+
+    context["area_name"] = name
+    return context
 
 @app.post("/set_wind")
 def set_wind(settings: WindSettings):

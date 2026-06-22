@@ -82,7 +82,7 @@ def enforce_velocity_boundary(u, v, obstacle_mask):
     return u_new, v_new
 
 class StableFluidsSolver:
-    def __init__(self, npz_path='data/grid_masks.npz', grid_size=128):
+    def __init__(self, npz_path='data/grid_masks.npz', grid_size=128, roads=None, center_lat=None, center_lon=None, radius_m=None):
         self.grid_size = grid_size
         
         # Load npz masks
@@ -91,12 +91,20 @@ class StableFluidsSolver:
             self.obstacle_mask = data['obstacle_mask'].astype(np.float32)
             self.road_mask = data['road_mask'].astype(np.float32)
             self.height_map = data['height_map'].astype(np.float32)
+            
+            # Load metadata from NPZ if present
+            self.center_lat = float(data['center_lat']) if 'center_lat' in data else center_lat
+            self.center_lon = float(data['center_lon']) if 'center_lon' in data else center_lon
+            self.radius_m = float(data['radius_m']) if 'radius_m' in data else radius_m
             print(f"Loaded grid masks from {npz_path}.")
         else:
             print(f"Warning: {npz_path} not found. Creating empty masks.")
             self.obstacle_mask = np.zeros((grid_size, grid_size), dtype=np.float32)
             self.road_mask = np.zeros((grid_size, grid_size), dtype=np.float32)
             self.height_map = np.zeros((grid_size, grid_size), dtype=np.float32)
+            self.center_lat = center_lat
+            self.center_lon = center_lon
+            self.radius_m = radius_m
             
         # State: velocity fields (u: horizontal/cols, v: vertical/rows) and concentration
         self.u = np.zeros((grid_size, grid_size), dtype=np.float32)
@@ -116,14 +124,19 @@ class StableFluidsSolver:
         
         # Initialize individual road segment masks
         self.road_segments_masks = []
-        self._init_road_segments()
+        self._init_road_segments(roads=roads)
 
-    def _init_road_segments(self):
+    def _init_road_segments(self, roads=None):
         try:
             from backend.osm_loader import fetch_region, project_geom
-            # Indore coordinates used in generation
-            lat, lon, radius = 22.7533, 75.8937, 800
-            buildings, roads = fetch_region(lat, lon, radius)
+            
+            lat = self.center_lat if self.center_lat is not None else 22.7533
+            lon = self.center_lon if self.center_lon is not None else 75.8937
+            radius = self.radius_m if self.radius_m is not None else 800
+            
+            # If roads is not passed, fetch it
+            if roads is None:
+                _, roads = fetch_region(lat, lon, radius)
             
             # Recreate local coordinates projection factors
             a = 6378137.0
