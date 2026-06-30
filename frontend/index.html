@@ -553,10 +553,35 @@
         </div>
     </div>
 
+    <!-- Real Data Callout Panel -->
+    <div id="live-context-panel" class="hud-panel" style="top: 245px; left: 24px; width: 346px; padding: 12px 16px;">
+        <div style="font-family: 'Outfit'; font-weight: 700; font-size: 0.82rem; color: var(--accent-green); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+            Indore Air Quality — Live Context
+        </div>
+        <div style="font-size: 0.78rem; line-height: 1.4; color: var(--text-primary);">
+            PM2.5 today: <strong style="color: var(--accent-yellow);">95 µg/m³ avg</strong>  |  WHO limit: 15 µg/m³
+        </div>
+        <div style="font-size: 0.78rem; font-weight: 600; color: var(--accent-red); margin-top: 4px;">
+            3× above safe levels
+        </div>
+        <div style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 4px;">
+            Source: IQAir / CPCB 2025
+        </div>
+    </div>
+
     <!-- Stats HUD -->
     <div id="stats-panel" class="hud-panel">
         <div class="stat-row">
-            <span class="stat-label">Max PM2.5</span>
+            <span class="stat-label">Active Species</span>
+            <select id="species-selector" style="background: rgba(10,10,18,0.8); border: 1px solid var(--panel-border); border-radius: 6px; color: white; padding: 4px 8px; font-size: 0.8rem; outline: none; cursor: pointer; font-weight: 600; font-family: 'Outfit';">
+                <option value="no2" selected>NO2 (ppb)</option>
+                <option value="no">NO (ppb)</option>
+                <option value="o3">O3 (ppb)</option>
+                <option value="co">CO (ppb)</option>
+            </select>
+        </div>
+        <div class="stat-row">
+            <span id="stat-max-label" class="stat-label">Max NO2</span>
             <span id="stat-max-conc" class="stat-value">0.00</span>
         </div>
         <div class="stat-row">
@@ -766,7 +791,7 @@
         camera.position.set(500, 600, 800);
 
         // WebGL2 required for DataTexture3D (3D textures in ray-march volume renderer)
-        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
         renderer.capabilities && renderer.capabilities.isWebGL2
             ? console.log('[GreenNavier] WebGL2 context acquired.')
             : console.warn('[GreenNavier] WebGL2 not available – volume renderer disabled.');
@@ -884,7 +909,21 @@
         const canyonCenter = new THREE.Vector3(0, 0, 0); // target for canyon orbits
 
         // Smooth color transition variables
-        let latestConc = Array(64).fill().map(() => Array(64).fill(0));
+        window.activeSpecies = 'no2';
+        window.latestSpecies = {
+            co: new Float32Array(4096),
+            no: new Float32Array(4096),
+            no2: new Float32Array(4096),
+            o3: new Float32Array(4096)
+        };
+        window.latestSpeciesMax = {
+            co: 100.0,
+            no: 2.0,
+            no2: 5.0,
+            o3: 30.0
+        };
+
+        let latestConc = window.latestSpecies[window.activeSpecies];
         let displayedConc = Array(64).fill().map(() => Array(64).fill(0));
         let latestMaxConc = 0;
         let displayedMaxConc = 0;
@@ -1068,12 +1107,12 @@
             for (let layer = 0; layer < VOL_D; layer++) {
                 const heightDecay = Math.exp(-layer * decay);
                 for (let row = 0; row < VOL_H; row++) {
-                    const rowData = conc[row];
+                    const rowOffset = row * VOL_W;
                     for (let col = 0; col < VOL_W; col++) {
-                        const raw  = (rowData && rowData[col]) ? rowData[col] : 0;
+                        const raw  = conc ? conc[rowOffset + col] : 0;
                         // Normalise to [0,1] so the shader transfer function gets clean input
                         const norm = Math.min(1.0, (raw / safeMax) * heightDecay);
-                        volumeData[layer * VOL_W * VOL_H + row * VOL_W + col] = (norm * 255) | 0;
+                        volumeData[layer * VOL_W * VOL_H + rowOffset + col] = (norm * 255) | 0;
                     }
                 }
             }
@@ -1548,6 +1587,20 @@
             });
         }
 
+        // Decode base64 string to Float32Array directly
+        function base64ToFloat32Array(base64Str) {
+            const binaryString = atob(base64Str);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return new Float32Array(bytes.buffer);
+        }
+
+        // WebSocket message queue
+        let frameQueue = [];
+
         // --- WebSocket Simulation Client ---
         let ws;
         function connectWebSocket() {
@@ -1571,41 +1624,7 @@
             };
 
             ws.onmessage = (event) => {
-                const frame = JSON.parse(event.data);
-                latestConc = frame.conc;
-                latestMaxConc = frame.max_conc;
-
-                // Feed live data to the volume renderer (no-op when volume is hidden)
-                updateVolumeTexture(frame.conc, frame.max_conc);
-
-                // Update UI Stats immediately for step and residual
-                document.getElementById('stat-residual').innerText = frame.physics_residual.toExponential(4);
-                document.getElementById('stat-step').innerText = frame.step;
-
-                // Update Physics Health status & colors
-                const physicsWarning = frame.physics_warning || false;
-                const physicsScore = frame.physics_score || 0.0;
-                const healthEl = document.getElementById('stat-physics-health');
-                
-                if (physicsWarning) {
-                    healthEl.innerText = "Violation";
-                    healthEl.style.color = "var(--accent-red)";
-                    
-                    // Trigger flash if warning just activated
-                    if (!lastPhysicsWarning) {
-                        flashRedOverlay();
-                    }
-                } else if (physicsScore > 0.02) {
-                    healthEl.innerText = "Mild";
-                    healthEl.style.color = "var(--accent-yellow)";
-                } else {
-                    healthEl.innerText = "Good";
-                    healthEl.style.color = "var(--accent-green)";
-                }
-                lastPhysicsWarning = physicsWarning;
-
-                // Update line chart
-                updateChart(frame.physics_residual);
+                frameQueue.push(event.data);
             };
         }
 
@@ -3070,11 +3089,77 @@
 
         // --- Animation Loop ---
         let _animRunning = false;
+        let lastFrameTime = 0;
+        const fpsInterval = 1000 / 30; // 30 FPS target (approx 33.33ms)
+
         function animate() {
             if (_animRunning) return; // prevent duplicate loops on second call
             _animRunning = true;
             function _loop() {
             requestAnimationFrame(_loop);
+
+            const now = performance.now();
+            const elapsed = now - lastFrameTime;
+
+            if (elapsed < fpsInterval) return;
+            lastFrameTime = now - (elapsed % fpsInterval);
+
+            // Process WebSocket frame queue
+            if (frameQueue.length > 0) {
+                if (frameQueue.length > 2) {
+                    console.log(`WebSocket queue built up (${frameQueue.length} frames). Dropping intermediate frames.`);
+                    frameQueue = [frameQueue[frameQueue.length - 1]];
+                }
+                const eventData = frameQueue.shift();
+                try {
+                    const frame = JSON.parse(eventData);
+                    window.latestSpecies = {
+                        co: base64ToFloat32Array(frame.conc_co || frame.conc),
+                        no: base64ToFloat32Array(frame.conc_no || frame.conc),
+                        no2: base64ToFloat32Array(frame.conc_no2 || frame.conc),
+                        o3: base64ToFloat32Array(frame.conc_o3 || frame.conc)
+                    };
+                    window.latestSpeciesMax = {
+                        co: frame.max_conc_co || frame.max_conc,
+                        no: frame.max_conc_no || frame.max_conc,
+                        no2: frame.max_conc_no2 || frame.max_conc,
+                        o3: frame.max_conc_o3 || frame.max_conc
+                    };
+                    latestConc = window.latestSpecies[window.activeSpecies];
+                    latestMaxConc = window.latestSpeciesMax[window.activeSpecies];
+
+                    // Feed live data to the volume renderer
+                    updateVolumeTexture(latestConc, latestMaxConc);
+
+                    // Update UI Stats immediately
+                    document.getElementById('stat-residual').innerText = frame.physics_residual.toExponential(4);
+                    document.getElementById('stat-step').innerText = frame.step;
+
+                    // Update Physics Health status & colors
+                    const physicsWarning = frame.physics_warning || false;
+                    const physicsScore = frame.physics_score || 0.0;
+                    const healthEl = document.getElementById('stat-physics-health');
+                    if (physicsWarning) {
+                        healthEl.innerText = "Violation";
+                        healthEl.style.color = "var(--accent-red)";
+                        if (!lastPhysicsWarning) {
+                            flashRedOverlay();
+                        }
+                    } else if (physicsScore > 0.02) {
+                        healthEl.innerText = "Mild";
+                        healthEl.style.color = "var(--accent-yellow)";
+                    } else {
+                        healthEl.innerText = "Good";
+                        healthEl.style.color = "var(--accent-green)";
+                    }
+                    lastPhysicsWarning = physicsWarning;
+
+                    // Update line chart
+                    updateChart(frame.physics_residual);
+                } catch (e) {
+                    console.error("Error processing WebSocket frame:", e);
+                }
+            }
 
             // 1. Interpolate colors and intensities for Time of Day transition
             const lerpSpeed = 0.03;
@@ -3107,21 +3192,37 @@
             particleSystem.geometry.attributes.position.needsUpdate = true;
 
             // 3. Smooth pollution color transitions and paint ground overlay
+            // Synchronize active species concentration
+            latestConc = window.latestSpecies[window.activeSpecies];
+            latestMaxConc = window.latestSpeciesMax[window.activeSpecies];
+            
             displayedMaxConc += (latestMaxConc - displayedMaxConc) * 0.12;
-            document.getElementById('stat-max-conc').innerText = displayedMaxConc.toFixed(2) + " PM2.5";
+            
+            let labelText = " NO₂";
+            if (window.activeSpecies === 'co') labelText = " CO";
+            else if (window.activeSpecies === 'no') labelText = " NO";
+            else if (window.activeSpecies === 'o3') labelText = " O₃";
+            document.getElementById('stat-max-conc').innerText = displayedMaxConc.toFixed(2) + labelText + " (ppb)";
 
-            let divisor = Math.max(3.0, displayedMaxConc * 0.75);
+            let minDivisor = 3.0;
+            if (window.activeSpecies === 'co') minDivisor = 120.0;
+            else if (window.activeSpecies === 'o3') minDivisor = 35.0;
+            else if (window.activeSpecies === 'no') minDivisor = 5.0;
+            else if (window.activeSpecies === 'no2') minDivisor = 10.0;
+
+            let divisor = Math.max(minDivisor, displayedMaxConc * 0.75);
             if (demoState === 'moment2') {
                 // Shift color mapping towards red by lowering the denominator (making it choke visually)
-                divisor = Math.max(1.5, displayedMaxConc * 0.45);
+                divisor = Math.max(minDivisor * 0.5, displayedMaxConc * 0.45);
             }
 
             const imgData = pollutionCtx.createImageData(64, 64);
             const data = imgData.data;
 
             for (let r = 0; r < 64; r++) {
+                const rowOffset = r * 64;
                 for (let c = 0; c < 64; c++) {
-                    displayedConc[r][c] += (latestConc[r][c] - displayedConc[r][c]) * 0.12;
+                    displayedConc[r][c] += (latestConc[rowOffset + c] - displayedConc[r][c]) * 0.12;
                     const val = displayedConc[r][c];
 
                     const norm = Math.min(1.0, val / divisor);
@@ -3239,7 +3340,12 @@
                 windAngle: 220,
                 windSpeed: 0.2,
                 decayRate: 0.999,
-                traffic: 90
+                traffic: 90,
+                J_NO2: 0.015,
+                C_OH: 0.05,
+                C_HO2: 0.02,
+                ohModel: "prescribed",
+                T: 290.0
             },
             noon: {
                 bgColor: 0x0a0c10,
@@ -3252,7 +3358,12 @@
                 windAngle: 270,
                 windSpeed: 0.6,
                 decayRate: 0.990, // high vertical mixing/dispersion
-                traffic: 40
+                traffic: 40,
+                J_NO2: 0.05,
+                C_OH: 0.2,
+                C_HO2: 0.1,
+                ohModel: "prescribed",
+                T: 305.0
             },
             evening: {
                 bgColor: 0x180b15,
@@ -3265,7 +3376,12 @@
                 windAngle: 290,
                 windSpeed: 0.4,
                 decayRate: 0.999,
-                traffic: 75
+                traffic: 75,
+                J_NO2: 0.005,
+                C_OH: 0.02,
+                C_HO2: 0.01,
+                ohModel: "prescribed",
+                T: 295.0
             },
             night: {
                 bgColor: 0x020204,
@@ -3278,7 +3394,12 @@
                 windAngle: 180,
                 windSpeed: 0.1,
                 decayRate: 0.9995, // stable layer, pollution lingers
-                traffic: 10
+                traffic: 10,
+                J_NO2: 0.0,
+                C_OH: 0.0,
+                C_HO2: 0.0,
+                ohModel: "none",
+                T: 285.0
             }
         };
 
@@ -3309,6 +3430,19 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ decay_rate: preset.decayRate })
             }).catch(err => console.error("Failed to update decay rate:", err));
+
+            // Update chemistry parameters on backend
+            fetch('http://localhost:8000/set_chemistry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    J_NO2: preset.J_NO2,
+                    C_OH: preset.C_OH,
+                    C_HO2: preset.C_HO2,
+                    oh_model: preset.ohModel,
+                    T: preset.T
+                })
+            }).catch(err => console.error("Failed to update chemistry settings:", err));
 
             // 5. Update traffic sliders and backend traffic parameters
             const sliders = document.querySelectorAll('.road-slider');
@@ -3348,6 +3482,17 @@
         document.getElementById('tod-afternoon').onclick = () => setTimeOfDay('noon');
         document.getElementById('tod-evening').onclick = () => setTimeOfDay('evening');
         document.getElementById('tod-night').onclick = () => setTimeOfDay('night');
+
+        // Setup species selector change listener
+        document.getElementById('species-selector').onchange = (e) => {
+            window.activeSpecies = e.target.value;
+            document.getElementById('stat-max-label').innerText = "Max " + window.activeSpecies.toUpperCase();
+            
+            // Instantly update volume and ground overlay displays with the last frame values
+            latestConc = window.latestSpecies[window.activeSpecies];
+            latestMaxConc = window.latestSpeciesMax[window.activeSpecies];
+            updateVolumeTexture(latestConc, latestMaxConc);
+        };
 
         // Setup event listeners for Demo Mode and Green Corridor buttons
 

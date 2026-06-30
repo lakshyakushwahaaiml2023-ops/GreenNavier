@@ -20,6 +20,7 @@ buildings_latlon = []
 roads_latlon = []
 active_connections = set()
 step_counter = 0
+last_conc_ws = None
 
 pinn_model = None
 pinn_buffer = []  # list of (state_64, residual)
@@ -37,18 +38,21 @@ async def simulation_worker():
     Background worker that continuously steps the fluid solver every 50ms.
     Broadcasts the downsampled concentration data to all active WebSocket clients.
     """
-    global step_counter, solver, active_connections, current_physics_score, current_physics_warning, pinn_model
+    global step_counter, solver, active_connections, current_physics_score, current_physics_warning, pinn_model, last_conc_ws
     while True:
         try:
-            # Step the physical simulation (dt=1.0)
-            solver.step(dt=1.0)
+            # Step the physical simulation (dt=1.0) in a background thread to prevent blocking
+            await asyncio.to_thread(solver.step, dt=1.0)
             step_counter += 1
             
-            # Downsample 128x128 concentration grid to 64x64 using block averaging
-            conc_64 = solver.conc.reshape(64, 2, 64, 2).mean(axis=(1, 3))
+            # Downsample 128x128 species concentration grids and velocity grids to 64x64
+            co_64 = solver.conc_co.reshape(64, 2, 64, 2).mean(axis=(1, 3))
+            no_64 = solver.conc_no.reshape(64, 2, 64, 2).mean(axis=(1, 3))
+            no2_64 = solver.conc_no2.reshape(64, 2, 64, 2).mean(axis=(1, 3))
+            o3_64 = solver.conc_o3.reshape(64, 2, 64, 2).mean(axis=(1, 3))
             u_64 = solver.u.reshape(64, 2, 64, 2).mean(axis=(1, 3))
             v_64 = solver.v.reshape(64, 2, 64, 2).mean(axis=(1, 3))
-            state_64 = np.stack([conc_64, u_64, v_64], axis=0) # (3, 64, 64)
+            state_64 = np.stack([co_64, no_64, no2_64, o3_64, u_64, v_64], axis=0) # (6, 64, 64)
             
             # Record residual
             res = solver.residuals[-1] if solver.residuals else 0.0
@@ -91,23 +95,51 @@ async def simulation_worker():
                 except Exception as err:
                     print(f"Error launching PINN training: {err}")
             
-            # Prepare state frame
-            frame = {
-                "conc": conc_64.tolist(),
-                "max_conc": float(solver.conc.max()),
-                "physics_residual": res,
-                "step": step_counter,
-                "physics_score": current_physics_score,
-                "physics_warning": current_physics_warning
-            }
+            # Downsample payload concentration grid using numpy slice [::2, ::2]
+            conc_co_ws = solver.conc_co[::2, ::2]
+            conc_no_ws = solver.conc_no[::2, ::2]
+            conc_no2_ws = solver.conc_no2[::2, ::2]
+            conc_o3_ws = solver.conc_o3[::2, ::2]
             
-            # Broadcast frame to all connected WebSocket clients
-            if active_connections:
-                clients = list(active_connections)
-                await asyncio.gather(
-                    *(client.send_json(frame) for client in clients),
-                    return_exceptions=True
-                )
+            # Only send if max concentration change of NO2 since last frame > 0.001
+            should_send = True
+            if last_conc_ws is not None:
+                max_change = float(np.max(np.abs(conc_no2_ws - last_conc_ws)))
+                if max_change <= 0.001:
+                    should_send = False
+            
+            if should_send:
+                last_conc_ws = conc_no2_ws.copy()
+                b64_co = base64.b64encode(conc_co_ws.astype(np.float32).tobytes()).decode('utf-8')
+                b64_no = base64.b64encode(conc_no_ws.astype(np.float32).tobytes()).decode('utf-8')
+                b64_no2 = base64.b64encode(conc_no2_ws.astype(np.float32).tobytes()).decode('utf-8')
+                b64_o3 = base64.b64encode(conc_o3_ws.astype(np.float32).tobytes()).decode('utf-8')
+                
+                # Prepare state frame
+                frame = {
+                    "conc": b64_no2,  # fallback for backward compatibility
+                    "conc_co": b64_co,
+                    "conc_no": b64_no,
+                    "conc_no2": b64_no2,
+                    "conc_o3": b64_o3,
+                    "max_conc": float(solver.conc_no2.max()),
+                    "max_conc_co": float(solver.conc_co.max()),
+                    "max_conc_no": float(solver.conc_no.max()),
+                    "max_conc_no2": float(solver.conc_no2.max()),
+                    "max_conc_o3": float(solver.conc_o3.max()),
+                    "physics_residual": res,
+                    "step": step_counter,
+                    "physics_score": current_physics_score,
+                    "physics_warning": current_physics_warning
+                }
+                
+                # Broadcast frame to all connected WebSocket clients
+                if active_connections:
+                    clients = list(active_connections)
+                    await asyncio.gather(
+                        *(client.send_json(frame) for client in clients),
+                        return_exceptions=True
+                    )
         except Exception as e:
             print(f"Error in simulation loop: {e}")
             
@@ -202,6 +234,13 @@ class DecaySettings(BaseModel):
 
 class GreenCorridorSettings(BaseModel):
     cells: list[dict]
+
+class ChemistrySettings(BaseModel):
+    J_NO2: float
+    C_OH: float
+    C_HO2: float
+    oh_model: str
+    T: float
 
 class SourceSettings(BaseModel):
     id: str
@@ -299,6 +338,23 @@ def set_green_corridor(settings: GreenCorridorSettings):
             if 0 <= gx < solver.grid_size and 0 <= gy < solver.grid_size:
                 solver.green_corridor_mask[gy, gx] = 1.0
     return {"message": "Green corridor updated successfully", "active_cells": len(settings.cells)}
+
+@app.post("/set_chemistry")
+def set_chemistry(settings: ChemistrySettings):
+    global solver
+    solver.J_NO2 = settings.J_NO2
+    solver.C_OH = settings.C_OH
+    solver.C_HO2 = settings.C_HO2
+    solver.oh_model = settings.oh_model
+    solver.T = settings.T
+    return {
+        "message": "Chemistry parameters updated successfully",
+        "J_NO2": settings.J_NO2,
+        "C_OH": settings.C_OH,
+        "C_HO2": settings.C_HO2,
+        "oh_model": settings.oh_model,
+        "T": settings.T
+    }
 
 @app.post("/set_traffic")
 def set_traffic(settings: TrafficSettings):
@@ -451,10 +507,27 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         # Send current state immediately on connect/reconnect
-        conc_64 = solver.conc.reshape(64, 2, 64, 2).mean(axis=(1, 3))
+        conc_co_ws = solver.conc_co[::2, ::2]
+        conc_no_ws = solver.conc_no[::2, ::2]
+        conc_no2_ws = solver.conc_no2[::2, ::2]
+        conc_o3_ws = solver.conc_o3[::2, ::2]
+        
+        b64_co = base64.b64encode(conc_co_ws.astype(np.float32).tobytes()).decode('utf-8')
+        b64_no = base64.b64encode(conc_no_ws.astype(np.float32).tobytes()).decode('utf-8')
+        b64_no2 = base64.b64encode(conc_no2_ws.astype(np.float32).tobytes()).decode('utf-8')
+        b64_o3 = base64.b64encode(conc_o3_ws.astype(np.float32).tobytes()).decode('utf-8')
+        
         frame = {
-            "conc": conc_64.tolist(),
-            "max_conc": float(solver.conc.max()),
+            "conc": b64_no2,
+            "conc_co": b64_co,
+            "conc_no": b64_no,
+            "conc_no2": b64_no2,
+            "conc_o3": b64_o3,
+            "max_conc": float(solver.conc_no2.max()),
+            "max_conc_co": float(solver.conc_co.max()),
+            "max_conc_no": float(solver.conc_no.max()),
+            "max_conc_no2": float(solver.conc_no2.max()),
+            "max_conc_o3": float(solver.conc_o3.max()),
             "physics_residual": float(solver.residuals[-1]) if solver.residuals else 0.0,
             "step": step_counter,
             "physics_score": current_physics_score,

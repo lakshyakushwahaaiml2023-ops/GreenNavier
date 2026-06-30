@@ -106,18 +106,30 @@ class StableFluidsSolver:
             self.center_lon = center_lon
             self.radius_m = radius_m
             
-        # State: velocity fields (u: horizontal/cols, v: vertical/rows) and concentration
+        # State: velocity fields (u: horizontal/cols, v: vertical/rows) and concentration fields
         self.u = np.zeros((grid_size, grid_size), dtype=np.float32)
         self.v = np.zeros((grid_size, grid_size), dtype=np.float32)
-        self.conc = np.zeros((grid_size, grid_size), dtype=np.float32)
+        
+        # Initialize background concentrations (realistic ambient values in ppb)
+        self.conc_co = np.full((grid_size, grid_size), 100.0, dtype=np.float32)
+        self.conc_no = np.full((grid_size, grid_size), 2.0, dtype=np.float32)
+        self.conc_no2 = np.full((grid_size, grid_size), 5.0, dtype=np.float32)
+        self.conc_o3 = np.full((grid_size, grid_size), 30.0, dtype=np.float32)
         
         # Parameters (settable mid-simulation)
         self.wind_angle = 270.0  # 0=north (blowing south), 90=east (blowing west), 270=west (blowing east)
         self.wind_speed = 0.5
-        self.decay_rate = 0.999  # Settable decay rate for simulation times
+        self.decay_rate = 0.9995  # Settable decay rate for simulation times (deposition/dilution)
         self.green_corridor_mask = np.zeros((grid_size, grid_size), dtype=np.float32)  # Mask for green corridors
         self.traffic_sources = {}  # dict mapping road segment index -> intensity
         self.point_sources = []    # list of (grid_x, grid_y, strength)
+        
+        # Chemistry Parameters (empirically tuned for dt/grid space rather than absolute physical values)
+        self.J_NO2 = 0.05  # Photolysis rate (peaks at Noon)
+        self.C_OH = 0.2    # OH radical concentration
+        self.C_HO2 = 0.1   # HO2 radical concentration
+        self.T = 298.15    # Temperature in Kelvin
+        self.oh_model = "prescribed"  # "prescribed", "steady_state", "none"
         
         # History metrics
         self.residuals = []
@@ -125,6 +137,14 @@ class StableFluidsSolver:
         # Initialize individual road segment masks
         self.road_segments_masks = []
         self._init_road_segments(roads=roads)
+
+    @property
+    def conc(self):
+        return self.conc_no2
+
+    @conc.setter
+    def conc(self, value):
+        self.conc_no2 = value
 
     def _init_road_segments(self, roads=None):
         try:
@@ -310,7 +330,7 @@ class StableFluidsSolver:
         div = 0.5 * (r_u - l_u + d_v - u_v)
         
         p = np.zeros_like(self.u)
-        for _ in range(25):
+        for _ in range(12):
             r_p, l_p, d_p, u_p = get_neighbors(p)
             p = (r_p + l_p + d_p + u_p - div) / 4.0
             p = enforce_neumann_boundary(p, self.obstacle_mask)
@@ -334,28 +354,94 @@ class StableFluidsSolver:
         # 5. Zero velocity inside obstacle cells and enforce no-penetration
         self.u, self.v = enforce_velocity_boundary(self.u, self.v, self.obstacle_mask)
         
-        # 6. Advect concentration (clean air inflow: default_inflow_value = 0.0)
-        self.conc = enforce_neumann_boundary(self.conc, self.obstacle_mask)
-        self.conc = advect_open(self.conc, self.u, self.v, 0.0)
+        # 6. Advect concentration fields with background values fed at inflow edges to prevent upwind clean-air artifacts
+        self.conc_co = enforce_neumann_boundary(self.conc_co, self.obstacle_mask)
+        self.conc_no = enforce_neumann_boundary(self.conc_no, self.obstacle_mask)
+        self.conc_no2 = enforce_neumann_boundary(self.conc_no2, self.obstacle_mask)
+        self.conc_o3 = enforce_neumann_boundary(self.conc_o3, self.obstacle_mask)
+        
+        self.conc_co = advect_open(self.conc_co, self.u, self.v, 100.0)
+        self.conc_no = advect_open(self.conc_no, self.u, self.v, 2.0)
+        self.conc_no2 = advect_open(self.conc_no2, self.u, self.v, 5.0)
+        self.conc_o3 = advect_open(self.conc_o3, self.u, self.v, 30.0)
         
         # Zero concentration inside obstacles
-        self.conc[self.obstacle_mask > 0.5] = 0.0
+        obs_mask = (self.obstacle_mask > 0.5)
+        self.conc_co[obs_mask] = 0.0
+        self.conc_no[obs_mask] = 0.0
+        self.conc_no2[obs_mask] = 0.0
+        self.conc_o3[obs_mask] = 0.0
 
-        # Apply Green Corridor absorption (absorb 35% concentration in corridor cells)
+        # Run chemical box reactions using a positive-definite mass-conserving semi-implicit solver.
+        # Rate constants are empirically calibrated to simulation dt/grid sizes.
+        k1 = 2.0 * np.exp(-800.0 / self.T)
+        k2 = 0.05 * np.exp(-500.0 / self.T)
+        k3 = 0.1 * np.exp(-600.0 / self.T)
+        
+        n_substeps = 5
+        dt_sub = dt / n_substeps
+        
+        for _ in range(n_substeps):
+            # A. CO decay (gated, analytical exact exponential solution)
+            if self.oh_model != "none":
+                self.conc_co *= np.exp(-k2 * self.C_OH * dt_sub)
+                
+            # B. Titration & Photolysis Rates (fraction-bounded approximate solution)
+            # CO decay sequencing: note that CO is decayed sequentially before the HO2 rate is evaluated.
+            react_tit = np.minimum(
+                self.conc_no * (k1 * dt_sub * self.conc_o3) / (1.0 + k1 * dt_sub * self.conc_o3),
+                self.conc_o3 * (k1 * dt_sub * self.conc_no) / (1.0 + k1 * dt_sub * self.conc_no)
+            )
+            react_pho = self.conc_no2 * (self.J_NO2 * dt_sub) / (1.0 + self.J_NO2 * dt_sub)
+            
+            # C. Compute HO2 + NO reaction rate
+            if self.oh_model == "steady_state":
+                react_ho2_no = np.minimum(self.conc_no, k2 * self.C_OH * dt_sub * self.conc_co)
+            elif self.oh_model == "prescribed":
+                react_ho2_no = self.conc_no * (k3 * self.C_HO2 * dt_sub) / (1.0 + k3 * self.C_HO2 * dt_sub)
+            else:
+                react_ho2_no = np.zeros_like(self.conc_no)
+                
+            # D. Stoichiometric Scaling (protects NO from double-depletion by O3 and HO2)
+            total_no_consume = react_tit + react_ho2_no
+            scale_mask = (total_no_consume > self.conc_no) & (total_no_consume > 0.0)
+            
+            factor = np.ones_like(self.conc_no)
+            factor[scale_mask] = self.conc_no[scale_mask] / total_no_consume[scale_mask]
+            
+            react_tit *= factor
+            react_ho2_no *= factor
+            
+            # E. Apply updates (NOx total is conserved exactly by construction)
+            self.conc_no = np.maximum(0.0, self.conc_no - react_tit - react_ho2_no + react_pho)
+            self.conc_no2 = np.maximum(0.0, self.conc_no2 + react_tit + react_ho2_no - react_pho)
+            self.conc_o3 = np.maximum(0.0, self.conc_o3 - react_tit + react_pho)
+
+        # Apply Green Corridor absorption (absorb 35% of all species in corridor cells)
         if np.any(self.green_corridor_mask > 0.5):
             corridor = (self.green_corridor_mask > 0.5)
-            self.conc[corridor] *= 0.65
+            self.conc_co[corridor] *= 0.65
+            self.conc_no[corridor] *= 0.65
+            self.conc_no2[corridor] *= 0.65
+            self.conc_o3[corridor] *= 0.65
         
         # 7. Add emissions (scaled down to prevent saturation and maintain high visual contrast)
         road_emission = self._get_road_emission()
-        self.conc += road_emission * 0.05 * dt
+        self.conc_co += road_emission * 1.0 * 0.05 * dt
+        self.conc_no += road_emission * 0.9 * 0.05 * dt
+        self.conc_no2 += road_emission * 0.1 * 0.05 * dt
         
         for gx, gy, strength in self.point_sources:
             if 0 <= gx < self.grid_size and 0 <= gy < self.grid_size:
-                self.conc[gy, gx] += strength * dt
+                self.conc_co[gy, gx] += strength * 1.0 * dt
+                self.conc_no[gy, gx] += strength * 0.8 * dt
+                self.conc_no2[gy, gx] += strength * 0.2 * dt
                 
-        # 8. Apply concentration decay (dilution/deposition)
-        self.conc *= self.decay_rate
+        # 8. Apply background concentration decay (dilution/deposition)
+        self.conc_co *= self.decay_rate
+        self.conc_no *= self.decay_rate
+        self.conc_no2 *= self.decay_rate
+        self.conc_o3 *= self.decay_rate
 
     def get_state(self):
         """
@@ -365,6 +451,10 @@ class StableFluidsSolver:
             'u': self.u.tolist(),
             'v': self.v.tolist(),
             'conc': self.conc.tolist(),
+            'conc_co': self.conc_co.tolist(),
+            'conc_no': self.conc_no.tolist(),
+            'conc_no2': self.conc_no2.tolist(),
+            'conc_o3': self.conc_o3.tolist(),
             'obstacle_mask': self.obstacle_mask.tolist()
         }
 

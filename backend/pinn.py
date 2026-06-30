@@ -12,8 +12,8 @@ class PINNErrorEstimator(nn.Module):
     """
     def __init__(self):
         super(PINNErrorEstimator, self).__init__()
-        # Tiny CNN architecture: 3 conv layers with 16/32/32 channels
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, padding=1)
+        # Tiny CNN architecture: 3 conv layers with 16/32/32 channels, accepting 6 input channels: [CO, NO, NO2, O3, u, v]
+        self.conv1 = nn.Conv2d(6, 16, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
         
@@ -23,7 +23,7 @@ class PINNErrorEstimator(nn.Module):
         self.fc2 = nn.Linear(16, 1)
 
     def forward(self, x):
-        # Input x shape: (batch_size, 3, 64, 64)
+        # Input x shape: (batch_size, 6, 64, 64)
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
@@ -121,9 +121,9 @@ def train_pinn(buffer, device, save_path="data/pinn_estimator.pt"):
                 loss_mse = F.mse_loss(outputs, batch_y)
                 
                 # Physics Loss: compute numerical divergence of input velocity field
-                # channels: 0 = concentration, 1 = u_velocity, 2 = v_velocity
-                u_batch = batch_x[:, 1, :, :]
-                v_batch = batch_x[:, 2, :, :]
+                # channels: 0=CO, 1=NO, 2=NO2, 3=O3, 4=u, 5=v
+                u_batch = batch_x[:, 4, :, :]
+                v_batch = batch_x[:, 5, :, :]
                 div = compute_numerical_divergence(u_batch, v_batch)
                 
                 # Enforce that predicted score is penalized if divergence is non-zero
