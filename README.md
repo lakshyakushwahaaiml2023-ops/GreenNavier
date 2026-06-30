@@ -13,13 +13,13 @@
 
 ## 📌 What Is GreenNavier?
 
-GreenNavier simulates how exhaust and particulate matter (PM2.5) disperse through a real city grid — specifically the **Indore, India** urban core — under live-configurable wind conditions and traffic loads.
+GreenNavier simulates how multiple coupled pollutant species disperse through a real city grid — specifically the **Indore, India** urban core — under live-configurable wind conditions, traffic loads, and diurnal chemical reactions.
 
 It combines:
-- A **128×128 Stable Fluids** Navier-Stokes solver running at ~50 ms/step
-- A **PINN (Physics-Informed Neural Network)** that monitors solver accuracy and flags physics violations in real time
-- A **Three.js 3D scene** built from real OpenStreetMap buildings and roads
-- **Interactive demo modes** including a scripted Green Corridor intervention that measurably reduces mean PM2.5 by ~14%
+- A **128×128 Stable Fluids** Navier-Stokes solver coupled with a positive-definite mass-conserving chemistry box solver tracking CO, NO, NO₂, and O₃
+- A **6-Channel PINN (Physics-Informed Neural Network)** error estimator that monitors solver consistency and flags physics violations
+- A **Three.js 3D scene** built from real OpenStreetMap buildings and roads, with a real-time volumetric smoke renderer and active species selector HUD
+- **Interactive demo modes** including a scripted Green Corridor intervention that reduces mean grid concentrations by ~14%
 
 ### 🆕 Advanced Interactive Features & Interventions
 
@@ -73,8 +73,8 @@ GreenNavier supports advanced real-time modifications directly inside the 3D vie
 
 | Layer | Technology | Role |
 |---|---|---|
-| **Fluid Solver** | NumPy (custom) | Stable Fluids Navier-Stokes — advection, viscous diffusion, Helmholtz projection |
-| **PINN Monitor** | PyTorch 2.x | 3-conv-layer CNN; predicts divergence residual; trained online on simulation buffer |
+| **Fluid Solver** | NumPy (custom) | Stable Fluids Navier-Stokes + positive-definite mass-conserving chemistry box model (CO, NO, NO₂, O₃) |
+| **PINN Monitor** | PyTorch 2.x | 6-channel input CNN; predicts divergence residual; trained online on simulation buffer |
 | **Backend API** | FastAPI + Uvicorn | WebSocket frame streaming; REST endpoints for wind/traffic/corridor/reset |
 | **Map Data** | OSMnx + Shapely | Fetches and rasterizes real OpenStreetMap buildings & roads |
 | **3D Renderer** | Three.js (r165) | City mesh, pollution heatmap texture, wind particle system, camera orbits |
@@ -256,9 +256,9 @@ This runs the solver for **500 steps × 2 configurations** (no corridor / with g
 - [x] **3D pollution volume rendering** — Integrated real-time WebGL volumetric fog rendering with slider-controlled density
 - [x] **Time-of-day scheduling** — Added presets (morning, noon, evening, night) that automatically animate wind parameters and scale traffic emissions dynamically
 - [x] **Dynamic City Scaling** — Enabled interactive region selector (Leaflet map) to select custom 3D viewports dynamically
+- [x] **Multi-species transport & photochemistry** — Added CO, NO, NO₂, and O₃ concentration fields with coupled reactions and a 6-channel neural monitor
 
 ### Near-Term
-- [ ] **Multi-species transport** — add CO, NOₓ, O₃ as separate concentration fields with inter-species chemistry
 - [ ] **Wind field from real sensor data** — ingest live anemometer readings from Indore Smart City API to replace the uniform wind body force
 
 ### Medium-Term
